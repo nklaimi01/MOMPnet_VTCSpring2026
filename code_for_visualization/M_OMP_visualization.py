@@ -177,6 +177,87 @@ def MOMP(h,D1,D2,D3,iter_max=30,sigma2_est=None,refine_iter=None):
     estimations=torch.stack(estimations_list,0)
     return estimations
 
+def batch_kron(A, B):
+    # A: [b, N1]
+    # B: [b, N2]
+    b, N1 = A.shape
+    _, N2 = B.shape
+
+    # Expand to broadcast across the Kronecker dimensions
+    A_expanded = A.unsqueeze(2)      # [b, N1, 1]
+    B_expanded = B.unsqueeze(1)      # [b, 1, N2]
+
+    # Multiply (broadcasts over N1 x N2)
+    C = (A_expanded * B_expanded).reshape(b, N1 * N2)
+    return C
+
+def batch_MOMP(H,D1,D2,D3,iter_max=30,sigma2_est=None,refine_iter=None):
+    if H.dim() == 3:
+        H = H.unsqueeze(0)  # [u=1, N1, N2, N3]
+    N=H.shape[-3:].numel()
+    u_idx = torch.arange(H.shape[0])
+    stop=False
+    iter = 0
+    I_list=[]
+    H_reshaped = H.reshape(H.shape[0],-1)
+    D_I_list=[]
+    r = H
+    estimations_list=[]
+    estimations_list.append(H)
+    while not stop:
+        corr1 = torch.einsum('ab,ubms->uams', torch.conj(D1).T, r) #[u,A1,N2,N3]
+        i1 = torch.argmax((corr1.abs()**2).sum(dim=(-2, -1)),dim=1) #[u]
+
+        corr2 = torch.einsum('am,ums->uas', torch.conj(D2).T, corr1[u_idx, i1]) #[u,A2,N3]
+        i2 = torch.argmax((corr2.abs()**2).sum(dim=-1),dim=1) #[u]
+
+        corr3 = torch.einsum('as,us->ua', torch.conj(D3).T, corr2[u_idx,i2]) #[u,A3]
+        i3 = torch.argmax(torch.abs(corr3)**2,dim=1) #[u]
+
+        # # Refinement of atom selection 
+        # if refine_iter is not None:
+        #     # print('avant raffinement: ',i1,i2,i3)
+        #     atom=[i1,i2,i3]
+        #     D=[D1,D2,D3]
+        #     for _ in range(refine_iter):
+        #         for d in range(len(atom)):
+        #             other_idx1, other_idx2 = (set(range(len(atom))) - {d})
+        #             vec_0=D[other_idx1][:,atom[other_idx1]]
+        #             vec_1=D[other_idx2][:,atom[other_idx2]]
+        #             r_permuted=r.permute(other_idx1,other_idx2,d) #[N_o1,N_o2,N_d]
+        #             corr_d = torch.einsum('a,abc,b->c',torch.conj(vec_0),r_permuted,torch.conj(vec_1)) #[N_o1,N_o2,N_d] -> [N_o2,N_d] -> [N_d]
+        #             corr_d = torch.matmul(torch.conj(D[d]).T, corr_d) #[A_d]
+        #             i_d = torch.argmax(torch.abs(corr_d)**2) #refined selection of i_d
+        #             atom[d]=i_d
+        #     i1,i2,i3=atom
+            # print('après raffinement: ',i1,i2,i3)
+        # else:
+        #     print('chosen atom:',[i1,i2,i3])
+        vec1 = D1[:, i1].T #[u, N1]
+        vec2 = D2[:, i2].T #[u, N2]
+        vec3 = D3[:, i3].T #[u, N3]
+             
+        D_I_list.append(batch_kron(batch_kron(vec1, vec2), vec3)) #[u, N1*N2*N3]
+        D_I=torch.stack(D_I_list,-1) #[u, N1*N2*N3, A_active]
+
+        x = torch.linalg.lstsq(D_I, H_reshaped).solution #[u, A_active]
+        proj_h = D_I @ x.unsqueeze(-1)
+        r_reshaped = H_reshaped - proj_h.squeeze()
+        r = r_reshaped.reshape(H.shape)
+        estimations_list.append(H-r)
+        iter += 1
+
+        if sigma2_est is None:
+            SC=False
+        else:
+            SC=torch.sum(torch.abs(r)**2)<=N*sigma2_est
+
+        if SC or iter>iter_max-1:
+            stop=True
+    # estimations=torch.stack(estimations_list,0)
+    return H-r
+
+
 
 def NMSE(channel,channel_estimation):
     if channel.dim() == 3:
@@ -292,10 +373,10 @@ def nmse_animation(nmse_1,nmse_2,logscale,save=None,labels=['OMP','MOMP'],colors
     return HTML(ani.to_jshtml()) 
 
 
-#%% OMP vs MOMP on observations
+
 D_B = real_BS_Dictionary
 D_S = FRV_Dictionary.to(dtype=torch.complex128)
-
+#%% OMP vs MOMP on observations
 users = [0,16,44,63]
 positions = [2,8,16,50,75]
 nb_channels=len(users)*len(positions)
@@ -361,9 +442,6 @@ better_fraction = np.mean(nmse_method1 < nmse_method2) * 100
 print(f"  Method 1 performs better in {better_fraction:.1f}% of examples")
 
 #%% 2 methods comparison test
-D_B = real_BS_Dictionary
-D_S = FRV_Dictionary.to(dtype=torch.complex128)
-
 users = [0,16,44,63]
 positions = [2,8,16,50,75]
 nb_channels=len(users)*len(positions)
@@ -401,4 +479,26 @@ nmse_momp_refine=stack_with_padding(nmse_momp_refine,1,length=len(nmse_momp_))
 #%%
 nmse_animation(nmse_momp_,nmse_momp_refine,logscale=True,labels=['MOMP NO refine','MOMP refined'],colors=["#E4E266","#7F91E0"],save='mp4')
 
+
+#%% BATCHED MOMP
+users = 0
+H = channels[user]
+Y=observations[user]
+sigma2_est=sigma2
+iter_max=50
+D_M = real_MS_Dictionaries[user]
+start_batched_momp = time.time()
+estimation_batched_momp=batch_MOMP(Y,D_B,D_M,D_S,iter_max,sigma2_est)
+end_batched_momp = time.time()
+print(f'batched MOMP execution time for batch of 100 observations is {end_batched_momp-start_batched_momp} s')
+NMSE_batched=NMSE(H,estimation_batched_momp)
+#%%
+test_list=[]
+start_looped_momp = time.time()
+for p in range(100):
+    test_list.append(MOMP(Y[p],D_B,D_M,D_S,iter_max,sigma2_est))
+test_list=[t[-1] for t in test_list]
+estimation_looped_momp=torch.stack(test_list,0)
+end_looped_momp = time.time()
+print(f'looped MOMP execution time for batch of 100 observations is {end_looped_momp-start_looped_momp} s')
 # %%

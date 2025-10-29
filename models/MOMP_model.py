@@ -25,13 +25,14 @@ class MOMP_model(nn.Module):
             self.BS_coupling_coeff = nn.Parameter(BS_coupling_coeff.to(device))     # complex coupling coefficitent
 
             # --- MS antenna positions ---
-            MS_ant_position = MS_ant_position.to(device)
-            self.MS_learnable_pos_y = nn.Parameter(MS_ant_position[:, 1].clone())   # learnable y-coordinates
-            self.register_buffer('MS_fixed_pos_x', MS_ant_position[:, 0].detach())  # fixed x-coordinates
-            self.register_buffer('MS_fixed_pos_z', MS_ant_position[:, 2].detach())  # fixed z-coordinates
+            MS_ant_position = MS_ant_position.to(device) #[u,8,3]
+            self.MS_learnable_pos_list = nn.ParameterList([nn.Parameter(MS_ant_position[u, :, 1].clone()) for u in range(MS_ant_position.shape[0])])
+            # self.MS_learnable_pos_y = nn.Parameter(MS_ant_position[:, 1].clone())   # learnable y-coordinates
+            self.register_buffer('MS_fixed_pos_x', MS_ant_position[:,:, 0].detach())  # fixed x-coordinates
+            self.register_buffer('MS_fixed_pos_z', MS_ant_position[:,:, 2].detach())  # fixed z-coordinates
 
             # --- MS antenna gains and coupling ---
-            self.register_buffer('MS_ant_gains', torch.ones(len(MS_ant_position), device=device))
+            self.register_buffer('MS_ant_gains', torch.ones(MS_ant_position.shape[1], device=device))
             self.register_buffer('MS_coupling_coeff', torch.tensor(0, device=device, dtype=torch.complex128))
 
             # --- Other parameters ---
@@ -43,7 +44,7 @@ class MOMP_model(nn.Module):
             self.nb_BS_antennas = len(BS_ant_position)  # number of BS antennas
 
 
-    def forward(self, H, sigma2_est, iter_max=30, refine_iter=2):
+    def forward(self, H, user_idx, sigma2_est, iter_max=30, refine_iter=2):
         """
         Performs MOMP to approximate
         the channel H using dictionaries D1, D2, and D3.
@@ -75,8 +76,8 @@ class MOMP_model(nn.Module):
         # Construct steering vector dictionaries for BS, MS, and frequency responses
         # --------------------------------------------------------------------------
         BS_ant_position = torch.stack([self.BS_fixed_pos_x, self.BS_learnable_pos_y, self.BS_fixed_pos_z], dim=1)
-        MS_ant_position = torch.stack([self.MS_fixed_pos_x, self.MS_learnable_pos_y, self.MS_fixed_pos_z], dim=1)
-
+        MS_ant_position = torch.stack([self.MS_fixed_pos_x[user_idx], self.MS_learnable_pos_list[user_idx], self.MS_fixed_pos_z[user_idx]], dim=1)
+        
         D1 = steering_vect_dict(self.BS_DoA, BS_ant_position, self.BS_ant_gains, self.BS_coupling_coeff, self.lambda_)
         D2 = steering_vect_dict(self.MS_DoA, MS_ant_position, self.MS_ant_gains, self.MS_coupling_coeff, self.lambda_)
         D3 = frequency_response_vect_dict(self.delays, self.subcarriers, None)

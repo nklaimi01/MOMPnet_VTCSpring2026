@@ -22,6 +22,14 @@ from saved_data_loader import *
 
 SNR_average=10*torch.log10(torch.mean(torch.sum(torch.abs(channels)**2, axis=(2, 3, 4))) / (16*8*128 * sigma2))
 print(f'average SNR={SNR_average}')
+
+# --- Colors ---
+color_real_MS ='green'#(1.0, 0.6, 0.6) #pastel_red
+color_real_BS = 'green'
+color_real='green'
+color_nominal = 'purple'
+color_OMP = 'blue'
+color_MOMP = 'orange'
 # LOAD TRAINED MODELS
 ############################ MOMP ############################
 
@@ -63,13 +71,13 @@ NMSEZ_MOMP_tensor = torch.stack(NMSEZ_MOMP).reshape(-1)
 plt.figure(figsize=(8, 5))
 # Then detach and convert to numpy
 bars1 = plt.bar(channels_idx - width/2, NMSE0_OMP_tensor.detach().cpu().numpy(), width,
-                label='OMP before training', color='red',alpha=0.5)
+                label='OMP before training', color=color_OMP,alpha=0.5)
 bars2 = plt.bar(channels_idx - width/2, NMSEZ_OMP_tensor.detach().cpu().numpy(), width,
-                label='after training with OMPnet', color='red')
+                label='after training with OMPnet', color=color_OMP)
 bars4 = plt.bar(channels_idx + width/2, NMSE0_MOMP_tensor.detach().cpu().numpy(), width,
-                label='MOMP before training', color='green',alpha=0.5)
+                label='MOMP before training', color=color_MOMP,alpha=0.5)
 bars3 = plt.bar(channels_idx + width/2, NMSEZ_MOMP_tensor.detach().cpu().numpy(), width,
-                label='after training with MOMPnet', color='green')
+                label='after training with MOMPnet', color=color_MOMP)
 plt.xticks(channels_idx)
 plt.semilogy()
 plt.legend()
@@ -100,109 +108,6 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-#%%
-learned_BS_pos_OMP=list(unfolded_OMP_model.parameters())[0].detach().numpy()  # first parameter tensor
-learned_gains_OMP=list(unfolded_OMP_model.parameters())[1].detach().numpy()  # first parameter tensor
-learned_coupling_OMP=list(unfolded_OMP_model.parameters())[2].detach().numpy()  # first parameter tensor
-learned_MS_pos_OMP=list(unfolded_OMP_model.parameters())[3].detach().numpy()  # first parameter tensor
-
-learned_BS_pos_MOMP=list(unfolded_MOMP_model.parameters())[0].detach().numpy()  # first parameter tensor
-learned_gains_MOMP=list(unfolded_MOMP_model.parameters())[1].detach().numpy()  # first parameter tensor
-learned_coupling_MOMP=list(unfolded_MOMP_model.parameters())[2].detach().numpy()  # first parameter tensor
-learned_MS_pos_MOMP=list(unfolded_MOMP_model.parameters())[3].detach().numpy()  # first parameter tensor
-
-
-####################################### plot learned MS postions #############################################
-# --- Colors ---
-color_real_MS =(1.0, 0.6, 0.6) #pastel_red
-color_real_BS = 'orange'
-color_nominal = 'black'
-color_OMP = 'red'
-color_MOMP = 'green'
-
-# --- X and Y coordinates ---
-x = real_MS_ant_position[0, :, 0].cpu().numpy()
-y_nominal = nominal_MS_ant_position[:, 1].cpu().numpy()
-y_real = real_MS_ant_position[0, :, 1].cpu().numpy()
-y_OMP = torch.tensor(learned_MS_pos_OMP).cpu().numpy()
-y_MOMP = torch.tensor(learned_MS_pos_MOMP).cpu().numpy()
-
-# --- Apply small horizontal offsets for visibility ---
-offset = 0.02  # adjust if antennas are close
-x_nominal = x - offset * 1.5
-x_real    = x - offset * 0.5
-x_OMP     = x + offset * 0.5
-x_MOMP    = x + offset * 1.5
-
-# --- Plot ---
-plt.figure(figsize=(8,5))
-
-plt.scatter(x_nominal, y_nominal, label='Nominal MS', marker='x', color=color_nominal, s=50, linewidths=1)
-plt.scatter(x_real, y_real, label='Real MS', color=color_real_MS, s=70, edgecolors='k', alpha=0.8)
-plt.scatter(x_OMP, y_OMP, label='Learned MS (OMP)', color=color_OMP, s=70, edgecolors='k', alpha=0.8)
-plt.scatter(x_MOMP, y_MOMP, label='Learned MS (MOMP)', color=color_MOMP, s=70, edgecolors='k', alpha=0.8)
-
-# --- Optional: connect each antenna index with dotted lines ---
-for i in range(len(x)):
-    plt.plot([x_nominal[i], x_real[i], x_OMP[i], x_MOMP[i]],
-             [y_nominal[i], y_real[i], y_OMP[i], y_MOMP[i]],
-             color='gray', linestyle='--', alpha=0.4, linewidth=1)
-
-# --- Labels and style ---
-plt.title('Mobile Station Antenna Positions', fontsize=14)
-plt.xlabel('X-axis [m]')
-plt.ylabel('Y-axis [m]')
-plt.legend(loc='best')
-plt.grid(True, linestyle='--', alpha=0.4)
-plt.tight_layout()
-plt.show()
-
-############################################ plot learned BS antenna Gains ####################################
-# --- Prepare data for plotting ---
-nominal_BS_gains = torch.from_numpy(BS_gains['nominal_BS_gains']).to(device)
-real_BS_gains_normalized = real_BS_gains / torch.sqrt(torch.sum((torch.abs(real_BS_gains)**2)))
-nominal_BS_gains_normalized = nominal_BS_gains / torch.sqrt(torch.sum((torch.abs(nominal_BS_gains)**2)))
-learned_gains_OMP_normalized= learned_gains_OMP / np.sqrt(np.sum((np.abs(learned_gains_OMP)**2)))
-learned_gains_MOMP_normalized= learned_gains_MOMP / np.sqrt(np.sum((np.abs(learned_gains_MOMP)**2)))
-
-idx = np.arange(len(real_BS_gains_normalized))
-mag_real = torch.abs(real_BS_gains_normalized).cpu()
-mag_nominal = torch.abs(nominal_BS_gains_normalized).cpu()
-mag_OMP = torch.abs(torch.tensor(learned_gains_OMP_normalized)).cpu()
-mag_MOMP = torch.abs(torch.tensor(learned_gains_MOMP_normalized)).cpu()
-
-phase_real = torch.angle(real_BS_gains_normalized).cpu()
-phase_nominal = torch.angle(nominal_BS_gains_normalized).cpu()
-phase_OMP = torch.angle(torch.tensor(learned_gains_OMP_normalized)).cpu()
-phase_MOMP = torch.angle(torch.tensor(learned_gains_MOMP_normalized)).cpu()
-
-# --- Plot magnitude comparison ---
-plt.figure(figsize=(10,4))
-plt.subplot(1,2,1)
-plt.plot(idx, mag_real, 'o-', label='Real', color=color_real_BS)
-plt.plot(idx, mag_nominal, 'x--', label='Nominal', color=color_nominal)
-plt.plot(idx, mag_OMP, 's-', label='OMP Learned', color=color_OMP)
-plt.plot(idx, mag_MOMP, 'd-', label='MOMP Learned', color=color_MOMP)
-plt.title('Antenna Gain Magnitudes')
-plt.xlabel('Antenna Index')
-plt.ylabel('|Gain|')
-plt.legend()
-plt.grid(True)
-
-# --- Plot phase comparison ---
-plt.subplot(1,2,2)
-plt.plot(idx, phase_real, 'o-', label='Real', color=color_real_BS)
-plt.plot(idx, phase_nominal, 'x--', label='Nominal', color=color_nominal)
-plt.plot(idx, phase_OMP, 's-', label='OMP Learned', color=color_OMP)
-plt.plot(idx, phase_MOMP, 'd-', label='MOMP Learned', color=color_MOMP)
-plt.title('Antenna Gain Phases')
-plt.xlabel('Antenna Index')
-plt.ylabel('Phase [rad]')
-plt.legend()
-plt.grid(True)
-
-plt.tight_layout()
-plt.show()
 
 #%%
 # --- Calcul des erreurs quadratiques ---

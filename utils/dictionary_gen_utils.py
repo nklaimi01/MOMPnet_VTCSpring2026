@@ -46,7 +46,6 @@ def steering_vect_dict(DoA: torch.Tensor,antenna_pos: torch.Tensor,antenna_gains
     """
     Nb_antenna=len(antenna_pos)
     antenna_coupling=torch.eye(Nb_antenna, dtype=torch.complex128)+ torch.diag(antenna_coupling_coeff * torch.ones(Nb_antenna-1, dtype=torch.complex128), diagonal=1)+ torch.diag(antenna_coupling_coeff * torch.ones(Nb_antenna-1, dtype=torch.complex128), diagonal=-1)
-    print(antenna_coupling)
     # Exponential term: [N, A]
     expo = torch.exp(-1j * 2 * torch.pi * (1.0 / lambda_) * (antenna_pos @ DoA.T))
 
