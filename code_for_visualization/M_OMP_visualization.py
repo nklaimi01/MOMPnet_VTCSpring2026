@@ -7,26 +7,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML
-import os
-import sys
-# Get the absolute path to this script
-current_dir = Path(__file__).resolve()
-# Traverse up until we reach the 'MOMP' folder
-for parent in current_dir.parents:
-    if parent.name == "MOMP":
-        project_root = parent
-        break
-else:
-    raise RuntimeError("Couldn't find 'MOMP' folder in path hierarchy.")
-# Set working directory to MOMP
-os.chdir(project_root)
-# Add project root to sys.path so imports work everywhere
-sys.path.append(str(project_root))
-# Now you can safely import
 from utils.data_gen_utils import *
 from utils.dictionary_gen_utils import *
 from saved_data_loader import *
-
+from utils.training_utils import NMSE,stack_with_padding
 #%%  functions
 #OMP
 def OMP(h, D1, D2, D3,iter_max=30, sigma2_est=None,stopping_criterion='SC1'):
@@ -256,31 +240,6 @@ def batch_MOMP(H,D1,D2,D3,iter_max=30,sigma2_est=None,refine_iter=None):
             stop=True
     # estimations=torch.stack(estimations_list,0)
     return H-r
-
-
-
-def NMSE(channel,channel_estimation):
-    if channel.dim() == 3:
-        channel = channel.unsqueeze(0)  # [1, Nbs, Nms, Nsub]
-    if channel_estimation.dim() == 3:  
-        channel_estimation = channel_estimation.unsqueeze(0)  # add batch dimension
-    return torch.sum(torch.abs(channel-channel_estimation)**2,dim=(1,2,3))/torch.sum(torch.abs(channel)**2)
-
-def stack_with_padding(tensors,dim,length=None):
-    """
-    Pad a list of 1D tensors with their last value
-    so they all have the same length.
-    """
-    if length is None:
-        length = max(t.size(0) for t in tensors)
-    padded = []
-    for t in tensors:
-        if t.size(0) < length:
-            pad_len = length - t.size(0)
-            last_val = t[-1].expand(pad_len)   # repeat last value
-            t = torch.cat([t, last_val])
-        padded.append(t)
-    return torch.stack(padded, dim=dim)  # shape [max_len, n_tensors]
 
 def nmse_animation(nmse_1,nmse_2,logscale,save=None,labels=['OMP','MOMP'],colors=["#E07F8C","#77DD77"],y_min=1e-6):
 

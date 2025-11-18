@@ -21,14 +21,14 @@ os.makedirs(save_dir,exist_ok=True)
 ################################## realistic synthetic channels generation: ###############################################
 ###########################################################################################################################
 # initialize scene
-scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.2,delta_g_BS=[0.2,0.2],coupling_coeff_BS=0.15*np.exp(1j*(-np.pi/6)))
+scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.24,delta_g_BS=[0.4,0.4],coupling_coeff_BS=0.15*np.exp(1j*(-np.pi/6)))
 # Generate Dataset
 subcarriers = f0 + np.arange(nb_subcarriers) * delta_f 
 #%% channels
-channels=generate_channels(save_dir,scene,nb_users,np_positions_per_user,subcarriers,delta_p_MS=0.1)
+channels=generate_channels(save_dir,scene,nb_users,np_positions_per_user,subcarriers,delta_p_MS=0.24)
 
 #%% observations
-SNR_avg_dB=10 #dB
+SNR_avg_dB=15 #dB
 observations,sigma2=generate_observations(save_dir,channels,SNR_avg_dB)
 
 

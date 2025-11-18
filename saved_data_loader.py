@@ -17,11 +17,23 @@ print(f"Working directory set to: {Path.cwd()}")
 # Add project root to sys.path so imports work everywhere
 sys.path.append(str(project_root))
 from utils.dictionary_gen_utils import *
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 f0 = 28e9  # Hz
 c = 3e8    # m/s
 lambda_ = c / f0
 delta_f = 120e3 * 12  # subcarrier distance
+BS_position=[60, -90, 30]
+# --- Colors ---
+color_observation='#7f7f7f'
+color_real_MS ='green'#(1.0, 0.6, 0.6) #pastel_red
+color_real_BS = 'green'
+color_real='green'
+color_nominal = 'red'
+color_OMP = 'blue'
+color_MOD='purple'
+color_MOMP = 'orange'
+###########################
 
 save_dir = Path.cwd()/'.saved_data/Data'
 # load Channels

@@ -19,104 +19,79 @@ sys.path.append(str(project_root))
 from models.MOMP_model import MOMP_model
 from models.OMP_model import OMP_model
 from saved_data_loader import *
+from utils.training_utils import *
 
 SNR_average=10*torch.log10(torch.mean(torch.sum(torch.abs(channels)**2, axis=(2, 3, 4))) / (16*8*128 * sigma2))
 print(f'average SNR={SNR_average}')
 
-# --- Colors ---
-color_real_MS ='green'#(1.0, 0.6, 0.6) #pastel_red
-color_real_BS = 'green'
-color_real='green'
-color_nominal = 'purple'
-color_OMP = 'blue'
-color_MOMP = 'orange'
+
 # LOAD TRAINED MODELS
 ############################ MOMP ############################
-
-unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position,
+nb_users=10
+nb_positions=10
+nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(nb_users)], dim=0)
+unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 # Load everything
 checkpoint = torch.load('.saved_data/.saved_models/MOMP_model_and_metrics.pth')
 # Load model weights
 unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
 # Load the lists
-NMSE0_MOMP = checkpoint['NMSE0']
-NMSEZ_MOMP = checkpoint['NMSEZ']
-train_losses_MOMP = checkpoint['train_losses']
-valid_losses_MOMP = checkpoint['valid_losses']
+NMSE0 = checkpoint['NMSE0']
+NMSEZ = checkpoint['NMSEZ']
+train_losses_list = checkpoint['train_losses']
+valid_losses_list = checkpoint['valid_losses']
 
-############################ OMP ############################
-unfolded_OMP_model = OMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position,
-                 subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
-# Load everything
-checkpoint = torch.load('.saved_data/.saved_models/OMP_model_and_metrics.pth')
-# Load model weights
-unfolded_OMP_model.load_state_dict(checkpoint['model_state_dict'])
-# Load the lists
-NMSE0_OMP = checkpoint['NMSE0']
-NMSEZ_OMP = checkpoint['NMSEZ']
-train_losses_OMP = checkpoint['train_losses']
-valid_losses_OMP = checkpoint['valid_losses']
+# #%%
+# learned_BS_pos_OMP=list(unfolded_OMP_model.parameters())[0].detach().numpy()  # first parameter tensor
+# learned_BS_pos_MOMP=list(unfolded_MOMP_model.parameters())[0].detach().numpy()  # first parameter tensor
 
-print("Model and lists loaded successfully!")
+# # --- Calcul des erreurs quadratiques ---
+# err_nominal = torch.sum(torch.abs(real_BS_ant_position[:, 1] - nominal_BS_ant_position[:, 1])**2)
+# err_learned_OMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_OMP))**2)
+# err_learned_MOMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_MOMP))**2)
 
-#----------------------------------- plots -----------------------------------
-#%% Test nmse
-channels_idx = torch.arange(1, len(NMSE0_OMP) + 1)
-width = 0.3
-NMSE0_OMP_tensor = torch.stack(NMSE0_OMP).reshape(-1)  # shape: [num_channels]
-NMSE0_MOMP_tensor = torch.stack(NMSE0_MOMP).reshape(-1)  # shape: [num_channels]
-NMSEZ_OMP_tensor = torch.stack(NMSEZ_OMP).reshape(-1)
-NMSEZ_MOMP_tensor = torch.stack(NMSEZ_MOMP).reshape(-1)
-plt.figure(figsize=(8, 5))
-# Then detach and convert to numpy
-bars1 = plt.bar(channels_idx - width/2, NMSE0_OMP_tensor.detach().cpu().numpy(), width,
-                label='OMP before training', color=color_OMP,alpha=0.5)
-bars2 = plt.bar(channels_idx - width/2, NMSEZ_OMP_tensor.detach().cpu().numpy(), width,
-                label='after training with OMPnet', color=color_OMP)
-bars4 = plt.bar(channels_idx + width/2, NMSE0_MOMP_tensor.detach().cpu().numpy(), width,
-                label='MOMP before training', color=color_MOMP,alpha=0.5)
-bars3 = plt.bar(channels_idx + width/2, NMSEZ_MOMP_tensor.detach().cpu().numpy(), width,
-                label='after training with MOMPnet', color=color_MOMP)
-plt.xticks(channels_idx)
-plt.semilogy()
-plt.legend()
-plt.show()
+# # --- Affichage des valeurs ---
+# print(f"‖P_real - P_nominal‖²₂ = {err_nominal.item():.4e}")
+# print(f"‖P_real - P_learnedOMP‖²₂ = {err_learned_OMP.item():.4e}")
+# print(f"‖P_real - P_learnedMOMP‖²₂ = {err_learned_MOMP.item():.4e}")
 
-#%% Plotting learning curve
-# Convert list of tensors -> average NMSE per epoch
-train_losses_avg_OMP = [t.mean().item() for t in train_losses_OMP]
-valid_losses_avg_OMP = [v.mean().item() for v in valid_losses_OMP]
-train_losses_avg_MOMP = [t.mean().item() for t in train_losses_MOMP]
-valid_losses_avg_MOMP = [v.mean().item() for v in valid_losses_MOMP]
-epochs = range(0, len(train_losses_avg_MOMP))
+#%% localization error
+learned_BS_pos_y=list(unfolded_MOMP_model.parameters())[0].detach()  # first parameter tensor
+learned_gains=list(unfolded_MOMP_model.parameters())[1].detach() # 2nd parameter tensor
+learned_coupling=list(unfolded_MOMP_model.parameters())[2].detach()  # 3rd parameter tensor
+learned_MS_pos_y=torch.stack([p.detach() for p in unfolded_MOMP_model.MS_learnable_pos_list], 0).cpu()  # 4th parameter tensor
 
-plt.figure(figsize=(8, 5))
-plt.plot(epochs, train_losses_avg_OMP, label='OMPnet Training loss', marker='x',linestyle='--', color='blue')
-plt.plot(epochs, train_losses_avg_MOMP, label='MOMPnet Training loss', marker='o', color='blue')
-
-plt.plot(epochs, valid_losses_avg_OMP, label='OMPnet Validation loss', marker='^',linestyle='--', color='orange')
-plt.plot(epochs, valid_losses_avg_MOMP, label='MOMPnet Validation loss', marker='s', color='orange')
-
-plt.gca().spines['left'].set_position('zero')
-plt.xlabel('Epoch')
-plt.xticks(epochs)
-plt.ylabel('NMSE')
-plt.title('Learning Curve')
-plt.grid(True, linestyle='--', alpha=0.7)
-plt.legend()
-plt.tight_layout()
-plt.show()
+learned_BS_pos=torch.stack([torch.tensor(nominal_BS_ant_position[:,0]), learned_BS_pos_y, torch.tensor(nominal_BS_ant_position[:,2])], dim=1)
+learned_D_B=steering_vect_dict(BS_DoA,learned_BS_pos,learned_gains,learned_coupling,lambda_)
+D_S=FRV_Dictionary
 
 
 #%%
-# --- Calcul des erreurs quadratiques ---
-err_nominal = torch.sum(torch.abs(real_BS_ant_position[:, 1] - nominal_BS_ant_position[:, 1])**2)
-err_learned_OMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_OMP))**2)
-err_learned_MOMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_MOMP))**2)
+est_AoA_list,est_delay_list=[],[]
+for u in range(nb_users):
+    learned_MS_pos_u=torch.stack([torch.tensor(nominal_MS_ant_position[:,0]), learned_MS_pos_y[u], torch.tensor(nominal_MS_ant_position[:,2])], dim=1)
+    D_M=steering_vect_dict(MS_DoA,learned_MS_pos_u,MS_gains,MS_coupling_coeff,lambda_)
+    for upos in range(nb_positions):
+        r,I,x=unfolded_MOMP_model.forward(observations[u,upos],u,sigma2)
 
-# --- Affichage des valeurs ---
-print(f"‖P_real - P_nominal‖²₂ = {err_nominal.item():.4e}")
-print(f"‖P_real - P_learnedOMP‖²₂ = {err_learned_OMP.item():.4e}")
-print(f"‖P_real - P_learnedMOMP‖²₂ = {err_learned_MOMP.item():.4e}")
+        i_b,i_m,i_s=I[0]
+        est_AoA_rd,a2,est_delay_us=[BS_angles[i_b],MS_angles[i_m],delays[i_s]*1e6]
+        est_AoA_list.append(est_AoA_rd)
+        est_delay_list.append(est_delay_us)
+        dx, dy, dz = users_position[u,upos]-torch.tensor(BS_position)
+        user_AoA_rd = np.pi - np.abs(np.arctan2(dx, dy))  
+        user_delay_us = np.sqrt(dx**2 + dy**2 + dz**2) / 3e8 * 1e6
+        user_AoAcos = np.cos(user_AoA_rd)
+        print(f'user {u}, position {upos}')
+        print( '-------------------------')
+        print(f'estimated AoA: {est_AoA_rd:.2F} rd' )
+        print(f'true user AoA: {user_AoA_rd:.2F} rd')
+        print('\n')
+        print(f'estimated delay: {est_delay_us:.2F} μs')
+        print(f'true user delay: {user_delay_us:.2F} μs')
+        print('==========================')
+
+# displacement = users_position[:nb_users, :nb_positions] - BS_position  # shape [nb_users, nb_positions, 3]
+
 # %%

@@ -348,7 +348,7 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     fig.legend()
     plt.show()
 #%% initialize scene
-scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,sigma_p,sigma_g,coupling_strength)
+scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.2,delta_g_BS=[0.2,0.2],coupling_coeff_BS=0.15*np.exp(1j*(-np.pi/6)))
 
 #load antenna gains at the BS:
 BS_gains=np.load(save_dir/'BS_gains.npz')
@@ -359,9 +359,11 @@ BS_ant_position=np.load(save_dir/'BS_ant_position.npz')
 nominal_BS_ant_position=BS_ant_position['nominal_BS_ant_position']
 real_BS_ant_position=BS_ant_position['real_BS_ant_position']
 #load mutual coupling matrix at the BS
-BS_coupling=np.load(save_dir/'BS_coupling.npz')
-nominal_BS_coupling=BS_coupling['nominal_BS_coupling']
-real_BS_coupling=BS_coupling['real_BS_coupling']
+# load mutual coupling matrix at the BS
+BS_coupling = np.load(save_dir/'BS_coupling.npz')
+nominal_BS_coupling_coeff = BS_coupling['nominal_BS_coupling_coeff']
+real_BS_coupling_coeff = BS_coupling['real_BS_coupling_coeff']
+
 
 #%% Generate Channels
 rng = np.random.default_rng(seed=None)
@@ -389,6 +391,7 @@ for idx in range(len(position_array)):
 paths=scene.compute_paths()
 paths.normalize_delays=False
 scene.preview(paths=paths)
+types=paths.types.numpy() #0=LOS #TODO problem is it gives all paths without knowing the sources
 #%%
 a,tau=paths.cir()
 # Make sure a and tau are float64
@@ -405,6 +408,9 @@ norms=(np.abs(channel).sum(axis=(1,2,3)))
 idx_to_delete=np.where(norms==0)
 channel_filtered=np.delete(channel,idx_to_delete,axis=0)
 channel_with_gains=np.einsum('a,uamk->uamk',real_BS_gains,channel_filtered) #consider antennas gains at BS
+
+off_diag = np.full(nb_BS_antennas - 1, real_BS_coupling_coeff, dtype=np.complex128)
+real_BS_coupling = np.eye(nb_BS_antennas, dtype=np.complex128) + np.diag(off_diag, 1) + np.diag(off_diag, -1)
 channel_coupled=np.einsum('ab,ubmk->uamk',real_BS_coupling,channel_with_gains) #consider antennas coupling at BS
 
 H=channel_coupled
@@ -414,8 +420,8 @@ H=channel_coupled
 nb_BS_atoms=nb_BS_antennas*10 #DoAs
 #generate different DoAs at BS
 BS_DoA,BS_angles=generate_DoA(nb_BS_atoms)
-real_BS_Dictionary=steering_vect_dict(BS_DoA,real_BS_ant_position,real_BS_gains,real_BS_coupling,lambda_)
-nominal_BS_Dictionary=steering_vect_dict(BS_DoA,nominal_BS_ant_position,nominal_BS_gains,nominal_BS_coupling,lambda_)
+real_BS_Dictionary=steering_vect_dict(BS_DoA,real_BS_ant_position,real_BS_gains,real_BS_coupling_coeff,lambda_)
+nominal_BS_Dictionary=steering_vect_dict(BS_DoA,nominal_BS_ant_position,nominal_BS_gains,nominal_BS_coupling_coeff,lambda_)
 # delay dictionary at subcarriers level
 nb_Subc_atoms=nb_subcarriers*10 #delays
 max_distance=(c/delta_f)
