@@ -1,4 +1,5 @@
 import torch
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def generate_DoA(nb_DoA: int):
     """
     Generate directions of arrival (DoA) vectors and corresponding angles (PyTorch version).
@@ -7,9 +8,9 @@ def generate_DoA(nb_DoA: int):
         DoA : [nb_DoA, 3] tensor
         angles : [nb_DoA] tensor
     """
-    DoA = torch.zeros((nb_DoA, 3), dtype=torch.float64)
+    DoA = torch.zeros((nb_DoA, 3), dtype=torch.float64, device=device)
 
-    cos_vals = torch.linspace(-1, 1, nb_DoA, dtype=torch.float64)
+    cos_vals = torch.linspace(-1, 1, nb_DoA, dtype=torch.float64, device=device)
     angles = torch.flip(torch.arccos(cos_vals), dims=[0])
 
     DoA[:, 0] = torch.sin(angles)
@@ -31,7 +32,7 @@ def generate_delays(nb_delays: int,delta_f):
     """
     c=3e8
     max_distance = c / delta_f
-    delays = torch.linspace(0, max_distance, nb_delays) / c
+    delays = torch.linspace(0, max_distance, nb_delays,device=device) / c
     return delays
 
 def steering_vect_dict(DoA: torch.Tensor,antenna_pos: torch.Tensor,antenna_gains: torch.Tensor,antenna_coupling_coeff: torch.Tensor,lambda_: float,) -> torch.Tensor:
@@ -45,7 +46,7 @@ def steering_vect_dict(DoA: torch.Tensor,antenna_pos: torch.Tensor,antenna_gains
     lambda_: wavelength (float)
     """
     Nb_antenna=len(antenna_pos)
-    antenna_coupling=torch.eye(Nb_antenna, dtype=torch.complex128)+ torch.diag(antenna_coupling_coeff * torch.ones(Nb_antenna-1, dtype=torch.complex128), diagonal=1)+ torch.diag(antenna_coupling_coeff * torch.ones(Nb_antenna-1, dtype=torch.complex128), diagonal=-1)
+    antenna_coupling=torch.eye(Nb_antenna, dtype=torch.complex128, device=device)+ torch.diag(antenna_coupling_coeff * torch.ones(Nb_antenna-1, dtype=torch.complex128,device=device), diagonal=1)+ torch.diag(antenna_coupling_coeff * torch.ones(Nb_antenna-1, dtype=torch.complex128,device=device), diagonal=-1)
     # Exponential term: [N, A]
     expo = torch.exp(-1j * 2 * torch.pi * (1.0 / lambda_) * (antenna_pos @ DoA.T))
 

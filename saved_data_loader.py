@@ -39,7 +39,7 @@ save_dir = Path.cwd()/'.saved_data/Data'
 # load Channels
 channels_dict = np.load(save_dir/'Channels.npz')
 channels = torch.from_numpy(channels_dict['channels']).to(device)
-users, users_positions, nb_BS_antennas, nb_MS_antennas, nb_subcarriers = channels.shape
+users, nb_users_positions, nb_BS_antennas, nb_MS_antennas, nb_subcarriers = channels.shape
 subcarriers = f0 + torch.arange(nb_subcarriers, device=device) * delta_f
 
 # load UEs positions

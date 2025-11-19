@@ -10,9 +10,29 @@ from saved_data_loader import *
 from utils.training_utils import *
 
 #%% functions
-def recover_shape(Ym):
-# Ym = Y.permute(0, 1, 3, 2).reshape(-1, Y.shape[2]) #([204800, 8])
-    return Ym.reshape(Y.shape[0],Y.shape[1],Y.shape[3],Y.shape[2],).permute(0, 1, 3, 2) # (100, 16, 8, 128)
+def mode_unfold(Y, m):
+    # Y is an N-way tensor
+    N = Y.ndim
+    
+    # Create permutation: bring dimension r to the front
+    perm = [i for i in range(N) if i != m] + [m] 
+    
+    # Permute and reshape
+    return Y.permute(*perm).reshape(-1, Y.shape[m])
+
+def recover_unfold(Ym, m, shape):
+    # Y is an N-way tensor
+    N = len(shape)
+    
+    # Create permutation: bring dimension r to the front
+    perm = [i for i in range(N) if i != m] + [m] 
+    permuted_shape=[shape[i] for i in perm]
+    # Permute and reshape
+    return Ym.reshape(*permuted_shape).permute(*perm)
+
+# def recover_shape(Ym):
+# # Ym = Y.permute(0, 1, 3, 2).reshape(-1, Y.shape[2]) #([204800, 8])
+#     return Ym.reshape(Y.shape[0],Y.shape[1],Y.shape[3],Y.shape[2]).permute(0, 1, 3, 2) # (100, 16, 8, 128)
 
 def OMP(Y, D,iter_max=10):
     '''handles batched perations'''
@@ -55,55 +75,31 @@ def OMP(Y, D,iter_max=10):
     r=r.squeeze(-1)
     return r,I,gamma
 
-# def OMP0(Y, D,sigma2_est,iter_max=10):
-#     '''does NOT handle batched perations'''
-#     iter = 0
-#     I_list=[]
-#     D_I_list=[]
-#     y=Y.unsqueeze(-1)
-#     r = y  # ([8, 1]) 
-#     N=y.numel()
-#     stop=False
 
-#     while not stop:
-#         corr=(torch.conj(D).T)@r  #([80,1])
-#         corr=corr.squeeze()
-#         i = torch.argmax(corr.abs()**2) #([])
-#         I_list.append(i)
+#%%--------------------------------------- preprocessing ------------------------------------------------------------
+Umax,Pmax=5,100
+H=channels[:Umax,:Pmax] #([Umax,Pmax, 16, 8, 128])
+Y=observations[:Umax,:Pmax] #temporarily 
+nb_users=H.shape[0]
+#------------------------------------  normalize channels  ----------------------------------------------------------
+H_normalized = H / torch.sqrt(torch.sum(torch.abs(H)**2, dim=(-3, -2, -1), keepdim=True))
+Y_normalized = Y / torch.sqrt(torch.sum(torch.abs(Y)**2, dim=(-3, -2, -1), keepdim=True))
+#-------------------------------Get train, validation and test data -------------------------------------------------
+train_test_ratio=0.8
+tt_split_index=int(H_normalized.shape[1] * train_test_ratio)
 
-#         D_I_list.append(D[:,i])
-#         D_I=torch.stack(D_I_list,-1) #([8, nb_active_atoms])
+# test data 
+H_test=H_normalized[:,tt_split_index:].to(device)
+Y_test=Y_normalized[:,tt_split_index:].to(device)
 
-#         # Step 4: projection (solve least-squares to update coefficients)
-#         gamma = torch.linalg.lstsq(D_I, y).solution
-#         proj_y = D_I @ gamma
+#each User u has its own Dictionary D_M:
+u=0 #u<Umax
+H_test_u=H_test[u]
+Y_test_u=Y_test[u]
+m=2 #dimensions des antennes de la MS #([Pmax, 16, 8, 128])
 
-#         # Step 5: update residual
-#         r = y - proj_y
-
-#         iter += 1
-
-#         if sigma2_est is None:
-#            SC=False
-#         else:
-#            SC= torch.sum(torch.abs(r)**2)<=N*sigma2_est # see mpnet paper   
-#         if SC or iter>iter_max-1:
-#             stop=True
-
-#     # Stack all estimations along first dimension
-#     I=torch.stack(I_list,dim=0) #([nb_active_atoms])
-#     gamma=gamma.squeeze()
-#     if gamma.ndim != 1: gamma=gamma.unsqueeze(0) #([nb_active_atoms])
-#     r=r.squeeze()
-#     return r,I,gamma
-
-# observations  #([100, 100, 16, 8, 128])
-#nominal_MS_Dictionary #([8,80])
-u=0
-Y=observations[u] #([100, 16, 8, 128])
-H=channels[u]
-Hm = H.permute(0, 1, 3, 2).reshape(-1, H.shape[2])
-Ym = Y.permute(0, 1, 3, 2).reshape(-1, Y.shape[2]) #([204800, 8])
+Hm = mode_unfold(H_test_u,m)
+Ym = mode_unfold(Y_test_u,m) #([204 800, 8])
 
 #%% MOD 
 batch_size=Ym.shape[0]
@@ -148,13 +144,14 @@ while not stop:
 #%%
 # LOAD TRAINED MODELS
 ############################ MOMP ############################
-nb_users=10
-nb_positions=10
+nb_users=1
+nb_positions=100
 nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(nb_users)], dim=0)
 unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 # Load everything
-checkpoint = torch.load('.saved_data/.saved_models/MOMP_model_and_metrics.pth')
+# checkpoint = torch.load('.saved_data/.saved_models/MOMP_model_and_metrics.pth')
+checkpoint = torch.load('MOMP_model_and_metrics.pth')
 # Load model weights
 unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
 learned_MS_pos_y=torch.stack([p.detach() for p in unfolded_MOMP_model.MS_learnable_pos_list], 0).cpu()  # 4th parameter tenso
@@ -177,11 +174,11 @@ r_unf,_,_=OMP(Ym,D_unf,iter_max=3)
 
 # %%
 
-nmse_0=NMSE(H,Y)
-nmse_1=NMSE(H,recover_shape(Ym-r))
-nmse_2=NMSE(H,recover_shape(Ym-r_MOD))
-nmse_3=NMSE(H,recover_shape(Ym-r_real))
-nmse_02=NMSE(H,recover_shape(Ym-r_unf))
+nmse_0=NMSE(H_test_u,Y_test_u)
+nmse_1=NMSE(H_test_u,recover_unfold(Ym-r,m,Y_test_u.shape))
+nmse_2=NMSE(H_test_u,recover_unfold(Ym-r_MOD,m,Y_test_u.shape))
+nmse_3=NMSE(H_test_u,recover_unfold(Ym-r_real,m,Y_test_u.shape))
+nmse_02=NMSE(H_test_u,recover_unfold(Ym-r_unf,m,Y_test_u.shape))
 
 
 # nmse_1=torch.sum(torch.abs(Hm-(Ym-r))**2,dim=(-1))/torch.sum(torch.abs(Hm)**2,dim=(-1))
@@ -190,17 +187,17 @@ nmse_02=NMSE(H,recover_shape(Ym-r_unf))
 #%%
 # Filter and slice data
 idx = torch.where(nmse_0 < 1)
-# nmse0 = nmse_0
-# nmse1 = nmse_1
-# nmse2 = nmse_2
-# nmse02 = nmse_02
-# nmse3 = nmse_3
+nmse0 = nmse_0
+nmse1 = nmse_1
+nmse2 = nmse_2
+nmse02 = nmse_02
+nmse3 = nmse_3
 
-nmse0 = nmse_0[idx]
-nmse1 = nmse_1[idx]
-nmse2 = nmse_2[idx]
-nmse02 = nmse_02[idx]
-nmse3 = nmse_3[idx]
+# nmse0 = nmse_0[idx]
+# nmse1 = nmse_1[idx]
+# nmse2 = nmse_2[idx]
+# nmse02 = nmse_02[idx]
+# nmse3 = nmse_3[idx]
 
 # Compute means
 means = [
@@ -233,7 +230,7 @@ plt.grid(True, which='both', linestyle='--', alpha=0.5)
 plt.tight_layout()
 plt.show()
 
-#%%
+#%% old school
 nmse0=nmse_0[idx][:20]
 nmse1=nmse_1[idx][:20]
 nmse2=nmse_2[idx][:20]

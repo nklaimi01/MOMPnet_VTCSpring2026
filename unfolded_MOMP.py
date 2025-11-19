@@ -12,10 +12,10 @@ from utils.training_utils import *
 
 
 #%%--------------------------------------- preprocessing ------------------------------------------------------------
-Umax,Pmax=1,100
+Umax,Pmax=5,100
 # Umax,Pmax=10,10
-H=channels[:Umax,:Pmax] #temporarly 
-Y=observations[:Umax,:Pmax] #temporarly 
+H=channels[:Umax,:Pmax] #temporarily 
+Y=observations[:Umax,:Pmax] #temporarily 
 nb_users=H.shape[0]
 #------------------------------------  normalize channels  ----------------------------------------------------------
 H_normalized = H / torch.sqrt(torch.sum(torch.abs(H)**2, dim=(-3, -2, -1), keepdim=True))
@@ -48,10 +48,10 @@ unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nomi
 #optimizer
 # optimizer = torch.optim.Adam(unfolded_MOMP_model.parameters(), lr=1e-4)
 optimizer = torch.optim.Adam([
-    {'params': unfolded_MOMP_model.BS_learnable_pos_y, 'lr':1e-4},
+    {'params': unfolded_MOMP_model.BS_learnable_pos_y, 'lr':1e-3},
     {'params': unfolded_MOMP_model.BS_ant_gains, 'lr':1e-2},
     {'params': unfolded_MOMP_model.BS_coupling_coeff, 'lr':1e-2},
-    {'params': unfolded_MOMP_model.MS_learnable_pos_list, 'lr':1e-4},
+    {'params': unfolded_MOMP_model.MS_learnable_pos_list, 'lr':1e-3},
 ])
 # scheduler= torch.optim.lr_scheduler.StepLR(optimizer,step_size=5,gamma=0.9)
 
@@ -68,8 +68,8 @@ with torch.no_grad():
     H_test_realdict  = model_estimation(Y_test, real_dictionary_MOMP_model, sigma2)
 
     # Compute NMSEs
-    NMSE0=NMSE(H_test.reshape(-1, *H_test.shape[2:]), H_test_nominaldict.reshape(-1, *H_test_nominaldict.shape[2:]))
-    NMSE_opt=NMSE(H_test.reshape(-1, *H_test.shape[2:]),H_test_realdict.reshape(-1, *H_test_realdict.shape[2:]))
+    NMSE_nominal=NMSE(H_test.reshape(-1, *H_test.shape[2:]), H_test_nominaldict.reshape(-1, *H_test_nominaldict.shape[2:]))
+    NMSE_real=NMSE(H_test.reshape(-1, *H_test.shape[2:]),H_test_realdict.reshape(-1, *H_test_realdict.shape[2:]))
 #%%---------------------------------------training-----------------------------------------------
 unfolded_MOMP_model.train()
 nb_epochs = 10
@@ -136,7 +136,7 @@ with torch.no_grad():
     H_test_MOMPnet = model_estimation(Y_test, unfolded_MOMP_model, sigma2)
 
     # Compute NMSEs
-    NMSEZ=NMSE(H_test.reshape(-1, *H_test.shape[2:]), H_test_MOMPnet.reshape(-1, *H_test_MOMPnet.shape[2:]))
+    NMSE_MOMP=NMSE(H_test.reshape(-1, *H_test.shape[2:]), H_test_MOMPnet.reshape(-1, *H_test_MOMPnet.shape[2:]))
 
 
 #%% Save data
@@ -144,8 +144,8 @@ with torch.no_grad():
 # Save everything together in a dictionary
 save_dict = {
     'model_state_dict': unfolded_MOMP_model.state_dict(),
-    'NMSE0': NMSE0,
-    'NMSEZ': NMSEZ,
+    'NMSE0': NMSE_nominal,
+    'NMSEZ': NMSE_MOMP,
     'train_losses': train_losses_list,
     'valid_losses': valid_losses_list
 }
@@ -158,29 +158,8 @@ print("Model and lists saved successfully!")
 #%%#############################################################################################################################################################################
 ##################################################################  plot evaluation ############################################################################################
 ################################################################################################################################################################################
-#bar plot 
-
-channels_idx = np.arange(1, len(NMSE0) + 1)
-width = 0.2
-NMSE0 = NMSE0.reshape(-1)  # shape: [num_channels]
-NMSEZ = NMSEZ.reshape(-1)
-NMSE_opt = NMSE_opt.reshape(-1)
-plt.figure(figsize=(8, 5))
-# Then detach and convert to numpy
-
-bars1 = plt.bar(channels_idx - width, NMSE0.detach().cpu().numpy(), width,
-                label='MOMP with nominal Dict', color=color_nominal,alpha=0.7)
-bars2 = plt.bar(channels_idx , NMSEZ.detach().cpu().numpy(), width,
-                label='unfolded MOMP', color=color_MOMP,alpha=0.7)
-bars0 = plt.bar(channels_idx + width, NMSE_opt.detach().cpu().numpy(), width,
-                label='MOMP with real Dict', color=color_real)
-plt.semilogy()
-plt.xticks(channels_idx)
-plt.legend()
-plt.show()
-
-# %% 
-# Plotting learning curve
+ 
+#--------------------------------------------------Plotting learning curve------------------------------------------------------------------
 # Convert list of tensors -> average NMSE per epoch
 train_losses_avg = [t.mean().item() for t in train_losses_list]
 valid_losses_avg = [v.mean().item() for v in valid_losses_list]
@@ -200,6 +179,71 @@ plt.grid(True, linestyle='--', alpha=0.7)
 plt.legend()
 plt.tight_layout()
 plt.show()
+#%%--------------------------------------------------Plotting testing NMSE------------------------------------------------------------------
+
+# Filter and slice data
+
+nmse0=NMSE(H_test,Y_test)
+nmse1 = NMSE_nominal
+nmse2 = NMSE_MOMP
+nmse3 = NMSE_real
+
+# idx = torch.where(nmse0 < 1)
+# nmse0 = nmse_0[idx]
+# nmse1 = nmse_1[idx]
+# nmse2 = nmse_2[idx]
+# nmse3 = nmse_3[idx]
+
+# Compute means
+means = [
+    nmse0.mean().item(),
+    nmse1.mean().item(),
+    nmse2.mean().item(),
+    nmse3.mean().item()
+]
+
+# Labels and colors
+labels = [
+    'Observation error',
+    'OMP with nominal Dict',
+    'OMP with DeepUnfolding Dict',
+    'OMP with real Dict'
+]
+colors = [color_observation, color_nominal, color_MOMP, color_real]
+width=0.5
+# Plot
+plt.figure(figsize=(8, 5))
+x = np.arange(len(means))
+plt.bar(x, means,width=width, color=colors, alpha=0.7)
+plt.yscale('log')
+plt.xticks(x, labels, rotation=20)
+plt.ylabel('NMSE (mean)')
+plt.title('Mean NMSE comparison')
+plt.grid(True, which='both', linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+# #old school
+# channels_idx = np.arange(1, len(NMSE0) + 1)
+# width = 0.2
+# NMSE0 = NMSE0.reshape(-1)  # shape: [num_channels]
+# NMSEZ = NMSEZ.reshape(-1)
+# NMSE_opt = NMSE_opt.reshape(-1)
+# plt.figure(figsize=(8, 5))
+# # Then detach and convert to numpy
+
+# bars1 = plt.bar(channels_idx - width, NMSE0.detach().cpu().numpy(), width,
+#                 label='MOMP with nominal Dict', color=color_nominal,alpha=0.7)
+# bars2 = plt.bar(channels_idx , NMSEZ.detach().cpu().numpy(), width,
+#                 label='unfolded MOMP', color=color_MOMP,alpha=0.7)
+# bars0 = plt.bar(channels_idx + width, NMSE_opt.detach().cpu().numpy(), width,
+#                 label='MOMP with real Dict', color=color_real)
+# plt.semilogy()
+# plt.xticks(channels_idx)
+# plt.legend()
+# plt.show()
+
+
 
 ################################################################################################################################################################################
 ##################################################################  learned parameters #########################################################################################
@@ -342,7 +386,19 @@ for u in range(Umax):
     plt.tight_layout()
     plt.show()
 
+# #%%
+# learned_BS_pos_OMP=list(unfolded_OMP_model.parameters())[0].detach().numpy()  # first parameter tensor
+# learned_BS_pos_MOMP=list(unfolded_MOMP_model.parameters())[0].detach().numpy()  # first parameter tensor
 
+# # --- Calcul des erreurs quadratiques ---
+# err_nominal = torch.sum(torch.abs(real_BS_ant_position[:, 1] - nominal_BS_ant_position[:, 1])**2)
+# err_learned_OMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_OMP))**2)
+# err_learned_MOMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_MOMP))**2)
+
+# # --- Affichage des valeurs ---
+# print(f"‖P_real - P_nominal‖²₂ = {err_nominal.item():.4e}")
+# print(f"‖P_real - P_learnedOMP‖²₂ = {err_learned_OMP.item():.4e}")
+# print(f"‖P_real - P_learnedMOMP‖²₂ = {err_learned_MOMP.item():.4e}")
 
 # %% ALL BS parameters in one fig
    
@@ -360,4 +416,23 @@ fig, ax = plot_multiple_parameter_sets(
 plt.show()
 
 
+# %%
+from saved_data_loader import *
+# LOAD TRAINED MODELS
+############################ MOMP ############################
+Umax=5
+Pmax=100
+nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(Umax)], dim=0)
+unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
+                 subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
+# Load everything
+# checkpoint = torch.load('.saved_data/.saved_models/MOMP_model_and_metrics.pth')
+checkpoint = torch.load('MOMP_model_and_metrics.pth')
+# Load model weights
+unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
+# Load the lists
+NMSE_nominal = checkpoint['NMSE0']
+NMSE_MOMP = checkpoint['NMSEZ']
+train_losses_list = checkpoint['train_losses']
+valid_losses_list = checkpoint['valid_losses']
 # %%
