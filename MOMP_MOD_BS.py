@@ -8,6 +8,8 @@ from utils.dictionary_gen_utils import *
 import matplotlib.pyplot as plt
 from saved_data_loader import *
 from utils.training_utils import *
+import time
+
 
 #%% functions
 def mode_unfold(Y, m):
@@ -115,6 +117,7 @@ epsilon=1e-2
 stop=False
 iter=0
 iter_max=5
+start_MOD=time.time()
 while not stop: 
     # step 1: sparse recovery
     _,I,gamma=OMP(Ym,D0,iter_max=iter_max)
@@ -141,6 +144,8 @@ while not stop:
     iter+=1
     print(f'iteration: {iter}, SC={torch.norm(D_MOD-D0)/torch.norm(D0)}')
     D0=D_MOD
+end_MOD = time.time()
+print(f"MOD time: {end_MOD - start_MOD:.6f} seconds")
 
 
 #%%

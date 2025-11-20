@@ -205,9 +205,9 @@ means = [
 # Labels and colors
 labels = [
     'Observation error',
-    'OMP with nominal Dict',
-    'OMP with DeepUnfolding Dict',
-    'OMP with real Dict'
+    'MOMP with nominal Dicts',
+    'MOMPnet',
+    'MOMP with real Dicts'
 ]
 colors = [color_observation, color_nominal, color_MOMP, color_real]
 width=0.5

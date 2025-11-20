@@ -262,8 +262,8 @@ def generate_observations(save_dir,H,SNR_avg_dB):
     snr_avg_lin = 10.0 ** (SNR_avg_dB / 10.0)
 
     # Compute noise variance
-    nb_elements = np.prod(H.shape[2:])
-    sigma2 = np.mean(np.sum(np.abs(H)**2, axis=(2, 3, 4))) / (nb_elements * snr_avg_lin)
+    nb_elements = np.prod(H.shape[-3:])
+    sigma2 = np.mean(np.sum(np.abs(H)**2, axis=(-3, -2, -1))) / (nb_elements * snr_avg_lin)
 
     # Generate complex Gaussian noise
     noise = np.sqrt(sigma2 / 2) * (np.random.randn(*H.shape) + 1j * np.random.randn(*H.shape))

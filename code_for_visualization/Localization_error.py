@@ -92,39 +92,73 @@ for u in tqdm(range(Umax)):
         true_AoA_list.append(user_AoA_rd)
         true_delay_list.append(user_delay_us)
 
-        print(f'user {u}, position {upos}')
-        print( '-------------------------')
-        print(f'estimated AoA: {est_AoA_rd:.2F} rd' )
-        print(f'true user AoA: {user_AoA_rd:.2F} rd')
-        print('\n')
-        print(f'estimated delay: {est_delay_us:.2F} μs')
-        print(f'true user delay: {user_delay_us:.2F} μs')
-        print('==========================')
+        # print(f'user {u}, position {upos}')
+        # print( '-------------------------')
+        # print(f'estimated AoA: {est_AoA_rd:.2F} rd' )
+        # print(f'true user AoA: {user_AoA_rd:.2F} rd')
+        # print('\n')
+        # print(f'estimated delay: {est_delay_us:.2F} μs')
+        # print(f'true user delay: {user_delay_us:.2F} μs')
+        # print('==========================')
 
 
 # %% localization error heatmap
 # ---------------------------------------------
 # Convert lists to arrays
 # ---------------------------------------------
-
 true_AoA = np.array(true_AoA_list)
 est_AoA = np.array(est_AoA_list)
 true_delay = np.array(true_delay_list)
 est_delay = np.array(est_delay_list)
 
-# Compute errors
-AoA_errors = np.abs(true_AoA - est_AoA)
-delay_errors = np.abs(true_delay - est_delay)
+
+true_d=true_delay*c*1e-6 #us -> m
+est_d=est_delay*c*1e-6
+relative_distance_error=np.sqrt(true_d**2+est_d**2-2*true_d*est_d*np.cos(est_AoA-true_AoA))
 
 # User positions (flattened)
 x_u = users_position_test[:, :, 0].reshape(-1)
 y_u = users_position_test[:, :, 1].reshape(-1)
 
-# Compute unified color scale (optional)
-# Comment out if AoA and delay are very different in magnitude
+#%%
+# ---------------------------------------------
+# relative distance Error Heatmap
+# ---------------------------------------------
+fig, ax = plt.subplots(figsize=(6,5))
+
+green_red_cmap = LinearSegmentedColormap.from_list(
+    "green_red", 
+    [
+        (0.0, "#39FF14"),   
+        (0.5, "orange"),    
+        (1.0, "red")        
+    ]
+)
+# Main scatter for AoA errors
+sc = ax.scatter(x_u, y_u, c=relative_distance_error, cmap=green_red_cmap, vmin=0, vmax=100)
+plt.colorbar(sc, label="relative distance Error (m)")
+
+# BS marker
+ax.scatter(BS_position[0], BS_position[1], color='black', s=100, label='BS')
+
+# BS-centered 200 m circle
+circle = patches.Circle((BS_position[0], BS_position[1]), 200,
+                        edgecolor='black', facecolor='none', linestyle='--', linewidth=2)
+ax.add_patch(circle)
+
+ax.set_title("Localization error Heatmap over User Positions")
+ax.set_xlabel("x (m)")
+ax.set_ylabel("y (m)")
+ax.legend()
+ax.axis('equal')  # ensure circle is not distorted
+
+
+#%%
+# Compute errors
+AoA_errors = np.abs(true_AoA - est_AoA)
+delay_errors = np.abs(true_delay - est_delay)
 AoA_lim = max(np.abs(AoA_errors.min()), AoA_errors.max())
 delay_lim = max(np.abs(delay_errors.min()), delay_errors.max())
-
 # ---------------------------------------------
 # AoA Error Heatmap
 # ---------------------------------------------

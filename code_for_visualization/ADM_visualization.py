@@ -21,7 +21,7 @@ else:
 os.chdir(project_root)
 # Add project root to sys.path so imports work everywhere
 sys.path.append(str(project_root))
-from utils.data_gen_utils import init_scene_ULA
+from utils.data_gen_utils import init_scene_ULA,generate_observations
 
 nb_BS_antennas=16
 nb_MS_antennas=8
@@ -62,7 +62,7 @@ def generate_DoA(nb_DoA: int):
 def steering_vect_dict(DoA: np.ndarray,
                        antenna_pos: np.ndarray,
                        antenna_gains: np.ndarray,
-                       antenna_coupling: np.ndarray,
+                       antenna_coupling_coeff: np.ndarray,
                        lambda_: float) -> np.ndarray:
     """
     Compute normalized steering vector dictionary (NumPy version).
@@ -73,6 +73,7 @@ def steering_vect_dict(DoA: np.ndarray,
     antenna_coupling: [N, N] array (mutual coupling matrix)
     lambda_: wavelength (float)
     """
+    nb_antennas=len(antenna_pos)
 
     # Exponential term: [N, A]
     expo = np.exp(-1j * 2 * np.pi * (1.0 / lambda_) * (antenna_pos @ DoA.T))
@@ -80,6 +81,8 @@ def steering_vect_dict(DoA: np.ndarray,
     # Apply gains
     dict_ = antenna_gains[:, None] * expo
 
+    off_diag = np.full(nb_antennas - 1, antenna_coupling_coeff, dtype=np.complex128)
+    antenna_coupling = np.eye(nb_antennas, dtype=np.complex128) + np.diag(off_diag, 1) + np.diag(off_diag, -1)
     # Apply antenna coupling
     dict_ = antenna_coupling @ dict_
 
@@ -391,7 +394,7 @@ for idx in range(len(position_array)):
 paths=scene.compute_paths()
 paths.normalize_delays=False
 scene.preview(paths=paths)
-types=paths.types.numpy() #0=LOS #TODO problem is it gives all paths without knowing the sources
+# types=paths.types.numpy() #0=LOS #TODO problem is it gives all paths without knowing the sources
 #%%
 a,tau=paths.cir()
 # Make sure a and tau are float64
@@ -414,7 +417,7 @@ real_BS_coupling = np.eye(nb_BS_antennas, dtype=np.complex128) + np.diag(off_dia
 channel_coupled=np.einsum('ab,ubmk->uamk',real_BS_coupling,channel_with_gains) #consider antennas coupling at BS
 
 H=channel_coupled
-
+Y,sigma2=generate_observations(None,H,SNR_avg_dB=15)
 #%% dictionary generation:
 # For BS antennas:
 nb_BS_atoms=nb_BS_antennas*10 #DoAs
@@ -431,8 +434,8 @@ FRV_Dictionary=frequency_response_vect_dict(delays,subcarriers,None)
 #%%##################################################################################################################
 ################################################ Angle delay map #####################################################
 ######################################################################################################################
-real_angle_delay_map=angle_delay_map(H,real_BS_Dictionary,FRV_Dictionary)
-nominal_angle_delay_map=angle_delay_map(H,nominal_BS_Dictionary,FRV_Dictionary)
+real_angle_delay_map=angle_delay_map(Y,real_BS_Dictionary,FRV_Dictionary)
+nominal_angle_delay_map=angle_delay_map(Y,nominal_BS_Dictionary,FRV_Dictionary)
 
 #%%
 
@@ -445,14 +448,14 @@ plt.imshow(corr)
 
 #%% angle map / delay map
 #angle map
-real_angle_map=np.einsum('ab,ubmk->uamk',np.conj(real_BS_Dictionary).T,H)
+real_angle_map=np.einsum('ab,ubmk->uamk',np.conj(real_BS_Dictionary).T,Y)
 real_angle_map=((np.abs(real_angle_map)**2).sum(axis=(2,3)))
 
-nominal_angle_map=np.einsum('ab,ubmk->uamk',np.conj(nominal_BS_Dictionary).T,H)
+nominal_angle_map=np.einsum('ab,ubmk->uamk',np.conj(nominal_BS_Dictionary).T,Y)
 nominal_angle_map=((np.abs(nominal_angle_map)**2).sum(axis=(2,3)))
 
 # delay map
-delay_map=np.einsum('ak,ubmk->ubma',np.conj(FRV_Dictionary).T,H)
+delay_map=np.einsum('ak,ubmk->ubma',np.conj(FRV_Dictionary).T,Y)
 delay_map=((np.abs(delay_map)**2).sum(axis=(1,2)))
 
 # position=1
@@ -488,8 +491,7 @@ delay_map=((np.abs(delay_map)**2).sum(axis=(1,2)))
 
 # plot_w_marginals(real_angle_delay_map[position],real_angle_map[position],delay_map[position],BS_angles,delays)
 #%%
-# for p in range(len(position_array)):
-for p in [0]:
+for p in range(len(position_array)):
     plot_w_marginals(real_angle_delay_map[p],real_angle_map[p],delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)
     plot_w_marginals(nominal_angle_delay_map[p],nominal_angle_map[p],delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)
 
