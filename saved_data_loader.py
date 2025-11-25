@@ -16,6 +16,7 @@ os.chdir(project_root)
 print(f"Working directory set to: {Path.cwd()}")
 # Add project root to sys.path so imports work everywhere
 sys.path.append(str(project_root))
+
 from utils.dictionary_gen_utils import *
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -30,8 +31,8 @@ color_real_MS ='green'#(1.0, 0.6, 0.6) #pastel_red
 color_real_BS = 'green'
 color_real='green'
 color_nominal = 'red'
-color_OMP = 'blue'
-color_MOD='purple'
+color_OMP = 'magenta'
+color_MOD='purple'#'blue'
 color_MOMP = 'orange'
 ###########################
 

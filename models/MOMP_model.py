@@ -25,7 +25,7 @@ class MOMP_model(nn.Module):
             self.BS_coupling_coeff = nn.Parameter(BS_coupling_coeff.to(device))     # complex coupling coefficitent
 
             # --- MS antenna positions ---
-            MS_ant_position = MS_ant_position.to(device) #[u,8,3]
+            MS_ant_position = MS_ant_position.to(device) #![u,8,3]
             self.MS_learnable_pos_list = nn.ParameterList([nn.Parameter(MS_ant_position[u, :, 1].clone()) for u in range(MS_ant_position.shape[0])])
             self.register_buffer('MS_fixed_pos_x', MS_ant_position[:,:, 0].detach())  # fixed x-coordinates
             self.register_buffer('MS_fixed_pos_z', MS_ant_position[:,:, 2].detach())  # fixed z-coordinates

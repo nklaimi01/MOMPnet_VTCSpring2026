@@ -45,7 +45,7 @@ def recover_unfold(Y_unf, r, shape):
 
 
 def OMP(Y, D,iter_max=10):
-    '''handles batched perations'''
+    '''handles batched operations'''
     iter = 0
     I_list=[]
     D_I_list=[]
@@ -97,15 +97,19 @@ train_test_ratio=0.8
 tt_split_index=int(H_normalized.shape[1] * train_test_ratio)
 
 # test data 
+H_train=H_normalized[:,:tt_split_index].to(device)
+Y_train=Y_normalized[:,:tt_split_index].to(device)
 H_test=H_normalized[:,tt_split_index:].to(device)
 Y_test=Y_normalized[:,tt_split_index:].to(device)
 
 m=2 #dimensions des antennes de la BS #([Umax,Pmax, 16, 8, 128])
-Hm = mode_unfold(H_test,m)
-Ym = mode_unfold(Y_test,m) #([Umax*Pmax*1024, 16])
+Hm_train = mode_unfold(H_train,m)
+Ym_train = mode_unfold(Y_train,m) #([Umax*Ptrain*1024, 16])
 
+Hm_test = mode_unfold(H_test,m)
+Ym_test = mode_unfold(Y_test,m) #([Umax*Ptest*1024, 16])
 #%% MOD 
-batch_size=Ym.shape[0]
+batch_size=Ym_train.shape[0]
 
 
 # D0_real = torch.rand(nominal_MS_Dictionary.shape,dtype=torch.complex128)
@@ -120,13 +124,13 @@ iter_max=5
 start_MOD=time.time()
 while not stop: 
     # step 1: sparse recovery
-    _,I,gamma=OMP(Ym,D0,iter_max=iter_max)
+    _,I,gamma=OMP(Ym_train,D0,iter_max=iter_max)
 
     Gamma=torch.zeros((batch_size),D0.shape[1],dtype=gamma.dtype)
     batch_idx = torch.arange(batch_size).unsqueeze(-1)
     Gamma[batch_idx, I] = gamma
     #step 2: update dictionary 
-    YmT=Ym.T # shape ([N_M, N_obs])
+    YmT=Ym_train.T # shape ([N_M, N_obs])
     Gamma=Gamma.T # shape ([A_M, N_obs])
 
     # Compute expression: D = Y * Gammaᴴ * (Gamma * Gammaᴴ)^(-1)
@@ -155,8 +159,8 @@ nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() f
 unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 # Load everything
-# checkpoint = torch.load('.saved_data/.saved_models/MOMP_1100.pth')
-checkpoint = torch.load('MOMP_model_and_metrics.pth')
+checkpoint = torch.load('.saved_data/.saved_models/MOMP_5100.pth')
+# checkpoint = torch.load('MOMP_model_and_metrics.pth')
 # Load model weights
 unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
 learned_BS_pos_y=list(unfolded_MOMP_model.parameters())[0].detach()  # first parameter tensor
@@ -178,18 +182,18 @@ print(torch.norm(real_BS_Dictionary-nominal_BS_Dictionary))
 print(torch.norm(real_BS_Dictionary-D_MOD))
 print(torch.norm(real_BS_Dictionary-D_unf))
 #%%
-r,_,_=OMP(Ym,nominal_BS_Dictionary,iter_max=iter_max)
-r_MOD,_,_=OMP(Ym,D_MOD,iter_max=iter_max)
-r_real,_,_=OMP(Ym,real_BS_Dictionary,iter_max=iter_max)
-r_unf,_,_=OMP(Ym,D_unf,iter_max=iter_max)
+r,_,_=OMP(Ym_test,nominal_BS_Dictionary,iter_max=iter_max)
+r_MOD,_,_=OMP(Ym_test,D_MOD,iter_max=iter_max)
+r_real,_,_=OMP(Ym_test,real_BS_Dictionary,iter_max=iter_max)
+r_unf,_,_=OMP(Ym_test,D_unf,iter_max=iter_max)
 
 # %%
 
 nmse_0=NMSE(H_test,Y_test)
-nmse_1=NMSE(H_test,recover_unfold(Ym-r,m,Y_test.shape))
-nmse_2=NMSE(H_test,recover_unfold(Ym-r_MOD,m,Y_test.shape))
-nmse_3=NMSE(H_test,recover_unfold(Ym-r_real,m,Y_test.shape))
-nmse_02=NMSE(H_test,recover_unfold(Ym-r_unf,m,Y_test.shape))
+nmse_1=NMSE(H_test,recover_unfold(Ym_test-r,m,Y_test.shape))
+nmse_2=NMSE(H_test,recover_unfold(Ym_test-r_MOD,m,Y_test.shape))
+nmse_3=NMSE(H_test,recover_unfold(Ym_test-r_real,m,Y_test.shape))
+nmse_02=NMSE(H_test,recover_unfold(Ym_test-r_unf,m,Y_test.shape))
 
 
 # nmse_1=torch.sum(torch.abs(Hm-(Ym-r))**2,dim=(-1))/torch.sum(torch.abs(Hm)**2,dim=(-1))
@@ -242,4 +246,4 @@ plt.tight_layout()
 plt.show()
 
 
-# %%
+

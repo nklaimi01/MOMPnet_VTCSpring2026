@@ -31,13 +31,21 @@ c = 3e8  # m/s
 lambda_ =  c/f0
 BS_position=[60, -90, 30]
 delta_f = 120e3 * 12 #according to 5G norms (subcarrier distance) #for every 12 subcarriers can appear a pilot subcarrier
-subcarriers = f0 + np.arange(nb_subcarriers) * delta_f 
+nominal_subcarriers = f0 + np.arange(nb_subcarriers) * delta_f 
+i_sc=np.arange(nb_subcarriers)
+z = 40 #ppm oscillator inaccuracy 
+real_subcarriers = nominal_subcarriers +i_sc*z*delta_f
 sigma_p=0.2
 sigma_g=0.4
 coupling_strength=0.4
 path_init = Path.cwd()/'.saved_data'
-save_dir=path_init/'visual'
+save_dir=path_init/'visual' 
+save_dir_noimp=path_init/'visual/no_impairments' #!/if no impairments'
+
 os.makedirs(save_dir,exist_ok=True)
+os.makedirs(save_dir_noimp,exist_ok=True)
+
+
 #%% functions
 
 def generate_DoA(nb_DoA: int):
@@ -243,7 +251,7 @@ def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom
 
     plt.show()
 
-def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=True, user=None):
+def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=True, user=None,save=None):
     '''
     user=[dx,dy,dz] user's relative position w/ respect to the BS
     '''
@@ -269,30 +277,25 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     # Top marginal (column) as line
     ax_top = fig.add_subplot(gs[0, 2],sharex=ax_main)
     ax_top.semilogy(delays_us,top_marginal)
-    ax_top.set_xticks([])
-    ax_top.set_yticks([])
-    ax_top.tick_params(axis='x',bottom=False,labelbottom=False)
-    ax_top.set_title("Delay map")
+    ax_top.tick_params(axis='both',which='both',bottom=False, top=False,left=False, right=False,labelbottom=False, labelleft=False)
+    # ax_top.set_title("Delay map")
     ax_top.axvline(delays_us[top_marginal.argmax()],color='orange')
 
     # Right marginal (row) as line
     ax_right = fig.add_subplot(gs[1, 3],sharey=ax_main)
     ax_right.semilogx(right_marginal, cos_angles)
     ax_right.invert_yaxis()
-    ax_right.set_yticks([])
-    ax_right.set_yticklabels([])
-    ax_right.tick_params(axis='y',left=False,labelleft=False)
-    ax_right.tick_params(axis='x',bottom=True,labelbottom=True)
-    ax_right.set_title("Angle map")
+    ax_right.tick_params(axis='both',which='both',bottom=False, top=False,left=False, right=False,labelbottom=False, labelleft=False)
+    # ax_right.set_title("Angle map")
     ax_right.axhline(cos_angles[right_marginal.argmax()],color='orange')
 
-    # # Remove spines from top marginal
-    # for spine in ["top", "right", "left"]:
-    #     ax_top.spines[spine].set_visible(False)
+    # Remove spines from top marginal
+    for spine in ["top", "right", "left"]:
+        ax_top.spines[spine].set_visible(False)
 
-    # # Remove spines from right marginal
-    # for spine in ["top", "right"]:
-    #     ax_right.spines[spine].set_visible(False)
+    # Remove spines from right marginal
+    for spine in ["top", "right","bottom"]:
+        ax_right.spines[spine].set_visible(False)
 
     # Main heatmap
     extent = [delays_us.min(), delays_us.max(), cos_angles.max(), cos_angles.min()]  
@@ -308,7 +311,7 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     im = ax_main.imshow(ADM,
                          aspect='auto',
                          extent=extent,
-                         origin='lower',
+                         origin='lower',cmap='GnBu',
                          vmin=vmin, vmax=vmax)
     # ax_main.set_title("Full BS Imperfection Knowledge")
     ax_main.set_xlabel("Delay [µs]")
@@ -321,7 +324,7 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     cbar.set_label("[dB]" if dB else "")
     cbar.ax.yaxis.set_ticks_position('left')   # 'left', 'right', or 'both'
     cbar.ax.yaxis.set_label_position('left')   # move the label too if needed
-    fig.suptitle("Angle-Delay Maps", fontsize=14)
+    # fig.suptitle("Angle-Delay Maps", fontsize=14)
 
     # Fix y-ticks: show cos(angle) but label in degrees
     yticks_cos = np.cos(np.deg2rad(yticks_deg))
@@ -333,11 +336,12 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     ax_main.set_xticklabels([f"{x:.1f}" for x in xticks_us])
 
     if show_max:  
-        # find maximum of the correlation matrix
-        ax_main.scatter(delays_us[top_marginal.argmax()], cos_angles[right_marginal.argmax()], color='orange', marker='s', s=80, label='MOMP Maximum correlation')
-
         r_angle_idx,r_delay_idx = np.unravel_index(np.argmax(ADM) , ADM.shape)  # (BS_angle_idx, delay_idx)
-        ax_main.scatter(delays_us[r_delay_idx], cos_angles[r_angle_idx], color='red', marker='s', s=80, label='OMP Maximum correlation')
+        ax_main.scatter(delays_us[r_delay_idx], cos_angles[r_angle_idx], color='magenta', marker='v', s=80, label='OMP Maximum correlation')
+        # find maximum of the correlation matrix
+        ax_main.scatter(delays_us[top_marginal.argmax()], cos_angles[right_marginal.argmax()], color='orange', marker='^', s=80, label='MOMP Maximum correlation')
+
+
 
 
     # Optional: mark user
@@ -348,10 +352,11 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
         user_cos = np.cos(user_angle_rd)
 
         ax_main.scatter(user_delay_us, user_cos, color='black', marker='x', s=100, label='User position (geometry)')
-    fig.legend()
+    fig.legend(fontsize=14)
+    if save is not None: fig.savefig(f"{save}.pdf")
     plt.show()
 #%% initialize scene
-scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.2,delta_g_BS=[0.2,0.2],coupling_coeff_BS=0.15*np.exp(1j*(-np.pi/6)))
+scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.24,delta_g_BS=[0.9,np.pi],coupling_coeff_BS=2.2*np.exp(1j*(-np.pi/6)))
 
 #load antenna gains at the BS:
 BS_gains=np.load(save_dir/'BS_gains.npz')
@@ -370,10 +375,9 @@ real_BS_coupling_coeff = BS_coupling['real_BS_coupling_coeff']
 
 #%% Generate Channels
 rng = np.random.default_rng(seed=None)
-# position_array=np.array(([160,-90,1.5],[-75,55,1.5],[0,-190,1.5],[225,-150,1.5]))#,[210,-90,1.5])) #positions of presentation 25
-position_array=np.array(([ -34.7816, -108.0387,    1.5000],[-75,55,1.5]))
+# position_array=np.array(([160,-90,1.5],[-75,55,1.5],[0,-190,1.5],[225,-150,1.5]))#,[210,-90,1.5],[ -34.7816, -108.0387,    1.5000])) #positions of presentation 25
+position_array=np.array(([160,-90,1.5],[-75,55,1.5]))
 nb_positions=position_array.shape[0] # number of random positions in the grid
-
 #Generate random UE antenna array orientation : A 3D rotation with yaw, pitch, and roll angles
 yaw = 2*np.pi*rng.random(nb_positions)
 pitch= 2*np.pi*rng.random(nb_positions)
@@ -401,7 +405,7 @@ a,tau=paths.cir()
 a = tf.cast(a, tf.complex128)      # amplitudes can be complex
 tau = tf.cast(tau, tf.float64)     # delays
 # Also make sure subcarriers are float64
-subcarriers = tf.cast(subcarriers, tf.float64)
+subcarriers = tf.cast(real_subcarriers, tf.float64)
 #built in function method : cir
 H_sionna = sionna.channel.cir_to_ofdm_channel(subcarriers,a,tau,normalize=False)
 H_sionna = H_sionna.numpy().squeeze() #[nb_BS_antenna , nb_chan_train]
@@ -418,6 +422,41 @@ channel_coupled=np.einsum('ab,ubmk->uamk',real_BS_coupling,channel_with_gains) #
 
 H=channel_coupled
 Y,sigma2=generate_observations(None,H,SNR_avg_dB=15)
+
+
+#!---------------------- if no impairments-----------------:
+scene_noimp=init_scene_ULA(save_dir_noimp,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0,delta_g_BS=[0,0],coupling_coeff_BS=0+1j*0) #! if no_impairments
+
+scene_noimp.tx_array.positions=tf.Variable(scene_noimp.tx_array.positions)
+#generate realistic synthetic channels using sionna RT
+#Add UE 
+for tx in scene_noimp.transmitters.copy():   # copy to avoid modifying while iterating
+        scene_noimp.remove(tx)
+for idx in range(len(position_array)):
+    tx = Transmitter(name='tx'+f'_{idx}',
+            position=position_array[idx],
+                orientation=orientation_array[idx])
+    scene_noimp.add(tx)
+paths_noimp=scene_noimp.compute_paths()
+paths_noimp.normalize_delays=False
+scene_noimp.preview(paths=paths_noimp)
+a_noimp,tau_noimp=paths_noimp.cir()
+# Make sure a and tau are float64
+a_noimp = tf.cast(a_noimp, tf.complex128)      # amplitudes can be complex
+tau_noimp = tf.cast(tau_noimp, tf.float64)     # delays
+# Also make sure subcarriers are float64
+subcarriers_noimp = tf.cast(nominal_subcarriers, tf.float64) 
+H_sionna_noimp = sionna.channel.cir_to_ofdm_channel(subcarriers_noimp,a_noimp,tau_noimp,normalize=False)
+H_sionna_noimp = H_sionna_noimp.numpy().squeeze() #[nb_BS_antenna , nb_chan_train]
+channel_noimp=H_sionna_noimp.transpose(1,0,2,3)
+# remove 0 norm paths and save the rest
+norms_noimp=(np.abs(channel_noimp).sum(axis=(1,2,3)))
+idx_to_delete_noimp=np.where(norms_noimp==0)
+channel_filtered_noimp=np.delete(channel_noimp,idx_to_delete_noimp,axis=0)
+
+H_noimp=channel_filtered_noimp
+Y_noimp,_=generate_observations(None,H_noimp,SNR_avg_dB=15)
+
 #%% dictionary generation:
 # For BS antennas:
 nb_BS_atoms=nb_BS_antennas*10 #DoAs
@@ -429,22 +468,24 @@ nominal_BS_Dictionary=steering_vect_dict(BS_DoA,nominal_BS_ant_position,nominal_
 nb_Subc_atoms=nb_subcarriers*10 #delays
 max_distance=(c/delta_f)
 delays=np.linspace(0,max_distance,nb_Subc_atoms)/c
-FRV_Dictionary=frequency_response_vect_dict(delays,subcarriers,None)
+nominal_FRV_Dictionary=frequency_response_vect_dict(delays,nominal_subcarriers,None)
+real_FRV_Dictionary=frequency_response_vect_dict(delays,real_subcarriers,None)
 
 #%%##################################################################################################################
 ################################################ Angle delay map #####################################################
 ######################################################################################################################
-real_angle_delay_map=angle_delay_map(Y,real_BS_Dictionary,FRV_Dictionary)
-nominal_angle_delay_map=angle_delay_map(Y,nominal_BS_Dictionary,FRV_Dictionary)
+real_angle_delay_map=angle_delay_map(Y,real_BS_Dictionary,real_FRV_Dictionary)
+nominal_angle_delay_map=angle_delay_map(Y,nominal_BS_Dictionary,nominal_FRV_Dictionary)
+noimp_angle_delay_map=angle_delay_map(Y_noimp,nominal_BS_Dictionary,nominal_FRV_Dictionary)
 
 #%%
 
 # for p in range(real_angle_delay_map.shape[0]):
 #     subplot_ADM(p,real_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=True)
 
-plt.figure()
-corr=np.abs(np.conj(FRV_Dictionary).T@FRV_Dictionary)
-plt.imshow(corr)
+# plt.figure()
+# corr=np.abs(np.conj(FRV_Dictionary).T@FRV_Dictionary)
+# plt.imshow(corr)
 
 #%% angle map / delay map
 #angle map
@@ -454,46 +495,28 @@ real_angle_map=((np.abs(real_angle_map)**2).sum(axis=(2,3)))
 nominal_angle_map=np.einsum('ab,ubmk->uamk',np.conj(nominal_BS_Dictionary).T,Y)
 nominal_angle_map=((np.abs(nominal_angle_map)**2).sum(axis=(2,3)))
 
+noimp_angle_map=np.einsum('ab,ubmk->uamk',np.conj(nominal_BS_Dictionary).T,Y_noimp)
+noimp_angle_map=((np.abs(noimp_angle_map)**2).sum(axis=(2,3)))
+
 # delay map
-delay_map=np.einsum('ak,ubmk->ubma',np.conj(FRV_Dictionary).T,Y)
-delay_map=((np.abs(delay_map)**2).sum(axis=(1,2)))
+nominal_delay_map=np.einsum('ak,ubmk->ubma',np.conj(nominal_FRV_Dictionary).T,Y)
+nominal_delay_map=((np.abs(nominal_delay_map)**2).sum(axis=(1,2)))
 
-# position=1
-# #placer position utilisateur (géométrie)
-# #Position utilisateur
+real_delay_map=np.einsum('ak,ubmk->ubma',np.conj(real_FRV_Dictionary).T,Y)
+real_delay_map=((np.abs(real_delay_map)**2).sum(axis=(1,2)))
 
-# dU=position_array[position]-BS_position
-# dx,dy,dz=dU
-# user_angle_rd = np.pi-np.abs(np.arctan2(dx,dy))
-# user_delay = np.sqrt(dx**2 + dy**2 + dz**2)/c
-
-# plt.figure()
-# plt.plot(BS_angles,real_angle_map[position],label='real dicitonary')
-# plt.plot(BS_angles,nominal_angle_map[position],label='nominal dicitonary')
-# # plt.scatter(user_tau,0)
-# plt.axvline(user_angle_rd,color='r',label='user angle (geometry)')
-# idxmax=real_angle_map[position].argmax()
-# # plt.axvline(BS_angles[idxmax], color='grey', linestyle='--', label='max')
-# plt.legend()
-
-
-# #placer position utilisateur (géométrie)
-# plt.figure()
-# plt.plot(delays,delay_map[position],label='delay map')
-# # plt.scatter(user_tau,0)
-# plt.axvline(user_delay,color='r',label='user delay (geometry)')
-# idxmax=delay_map[position].argmax()
-# # plt.axvline(delays[idxmax]*c, color='grey', linestyle='--', label='max')
-# plt.legend()
-
+noimp_delay_map=np.einsum('ak,ubmk->ubma',np.conj(nominal_FRV_Dictionary).T,Y_noimp)
+noimp_delay_map=((np.abs(noimp_delay_map)**2).sum(axis=(1,2)))
 
 # %%
 
 # plot_w_marginals(real_angle_delay_map[position],real_angle_map[position],delay_map[position],BS_angles,delays)
 #%%
 for p in range(len(position_array)):
-    plot_w_marginals(real_angle_delay_map[p],real_angle_map[p],delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)
-    plot_w_marginals(nominal_angle_delay_map[p],nominal_angle_map[p],delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)
+    plot_w_marginals(real_angle_delay_map[p],real_angle_map[p],real_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)#,save=f'{p}_real')
+    plot_w_marginals(nominal_angle_delay_map[p],nominal_angle_map[p],nominal_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)#,save=f'{p}_nominal')
+
+    plot_w_marginals(noimp_angle_delay_map[p],noimp_angle_map[p],noimp_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)#,save=f'{p}_no_impairments') #! if no_impairments
 
 
 

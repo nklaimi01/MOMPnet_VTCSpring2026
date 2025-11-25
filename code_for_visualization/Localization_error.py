@@ -1,9 +1,9 @@
 #%%
 import torch
-from pathlib import Path
-import os,sys
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from pathlib import Path
+import sys,os
 # Get the absolute path to this script
 current_dir = Path(__file__).resolve()
 # Traverse up until we reach the 'MOMP' folder
@@ -15,6 +15,7 @@ else:
     raise RuntimeError("Couldn't find 'MOMP' folder in path hierarchy.")
 # Set working directory to MOMP
 os.chdir(project_root)
+print(f"Working directory set to: {Path.cwd()}")
 # Add project root to sys.path so imports work everywhere
 sys.path.append(str(project_root))
 from models.MOMP_model import MOMP_model
@@ -54,8 +55,8 @@ nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() f
 unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 
-# checkpoint = torch.load('.saved_data/.saved_models/MOMP_1100.pth')
-checkpoint = torch.load('MOMP_model_and_metrics.pth')
+checkpoint = torch.load('.saved_data/.saved_models/MOMP_5100.pth')
+# checkpoint = torch.load('MOMP_model_and_metrics.pth')
 # Load model weights
 unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
 

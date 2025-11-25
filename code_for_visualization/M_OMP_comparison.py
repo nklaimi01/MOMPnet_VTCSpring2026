@@ -1,5 +1,20 @@
 #%%
 from pathlib import Path
+import sys,os
+# Get the absolute path to this script
+current_dir = Path(__file__).resolve()
+# Traverse up until we reach the 'MOMP' folder
+for parent in current_dir.parents:
+    if parent.name == "MOMP":
+        project_root = parent
+        break
+else:
+    raise RuntimeError("Couldn't find 'MOMP' folder in path hierarchy.")
+# Set working directory to MOMP
+os.chdir(project_root)
+print(f"Working directory set to: {Path.cwd()}")
+# Add project root to sys.path so imports work everywhere
+sys.path.append(str(project_root))
 import torch
 import time
 import matplotlib.pyplot as plt
@@ -255,7 +270,7 @@ def nmse_animation(nmse_1,nmse_2,logscale,save=None,labels=['OMP','MOMP'],colors
     bars1 = ax.bar(channels_idx - width/2, nmse_1[0], width, label=labels[0], color=colors[0])
     bars2 = ax.bar(channels_idx + width/2, nmse_2[0], width, label=labels[1], color=colors[1])
     for xi, yi in zip(channels_idx, nmse_1[0]):
-        ax.hlines(y=yi, xmin=xi-0.4, xmax=xi+0.4, colors="red", linestyles=":")
+        ax.hlines(y=yi, xmin=xi-0.4, xmax=xi+0.4, colors="gray", linestyles=":")
 
 
     # --- NEW: Add horizontal lines at the minimum NMSE per channel ---
@@ -263,9 +278,9 @@ def nmse_animation(nmse_1,nmse_2,logscale,save=None,labels=['OMP','MOMP'],colors
     min_nmse_2,_ = nmse_2.min(axis=0)
     # Plot green dashed lines for minima
     for xi, yi in zip(channels_idx, min_nmse_1):
-        ax.hlines(y=yi, xmin=xi-0.4, xmax=xi, colors="blue", linestyles="-", linewidth=1.5, alpha=0.8)
+        ax.hlines(y=yi, xmin=xi-0.4, xmax=xi, colors="green", linestyles="-", linewidth=1.5, alpha=0.8)
     for xi, yi in zip(channels_idx, min_nmse_2):
-        ax.hlines(y=yi, xmin=xi, xmax=xi+0.4, colors="blue", linestyles="-", linewidth=1.5, alpha=0.8)
+        ax.hlines(y=yi, xmin=xi, xmax=xi+0.4, colors="green", linestyles="-", linewidth=1.5, alpha=0.8)
 
 
     ax.set_xlabel('Channel Index')
@@ -359,7 +374,7 @@ for user in users:
         # print(f"OMP time: {end_omp - start_omp:.6f} seconds")
 
         # start_momp = time.time()
-        estimations_momp=MOMP(observation,D_B,D_M,D_S,iter_max,sigma2_est)
+        estimations_momp=MOMP(observation,D_B,D_M,D_S,iter_max,sigma2_est,refine_iter=2)
         print(f'number of iterations MOMP={len(estimations_momp)-1}')
 
         # end_momp = time.time()
@@ -374,7 +389,7 @@ nmse_momp=stack_with_padding(nmse_momp_list,1)
 nmse_omp=stack_with_padding(nmse_omp_list,1,length=len(nmse_momp))
 
 #%%
-nmse_animation(nmse_omp,nmse_momp,logscale=True,save='mp4',y_min=1e-4)
+nmse_animation(nmse_omp,nmse_momp,logscale=True,save='mp4',colors=[color_OMP,color_MOMP],y_min=1e-5)
 
 #%% quantitive eval
 print("=== NMSE Comparison over independent examples ===")
@@ -436,7 +451,7 @@ for user in users:
 nmse_momp_=stack_with_padding(nmse_momp_,1)
 nmse_momp_refine=stack_with_padding(nmse_momp_refine,1,length=len(nmse_momp_))
 #%%
-nmse_animation(nmse_momp_,nmse_momp_refine,logscale=True,labels=['MOMP NO refine','MOMP refined'],colors=["#E4E266","#7F91E0"],save='mp4')
+nmse_animation(nmse_momp_,nmse_momp_refine,logscale=True,labels=['MOMP NO refine','MOMP refined'],colors=["#E4E266","#7F91E0"])#,save='mp4')
 
 
 #%% BATCHED MOMP

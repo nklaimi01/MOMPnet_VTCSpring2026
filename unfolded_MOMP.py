@@ -12,7 +12,7 @@ from utils.training_utils import *
 
 
 #%%--------------------------------------- preprocessing ------------------------------------------------------------
-Umax,Pmax=5,100
+Umax,Pmax=5,10
 # Umax,Pmax=10,10
 H=channels[:Umax,:Pmax] #temporarily 
 Y=observations[:Umax,:Pmax] #temporarily 
@@ -42,7 +42,7 @@ Y_val     = Y_aux[:,tv_split_index:] # int(valid_size/U)].to(device)
 #%% ----------------------------------- Deep unfolding ------------------------------------------
 # parameters defining
 # model defining
-nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(nb_users)], dim=0)
+nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(nb_users)], dim=0) #!!!
 unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff,nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)
 #optimizer
@@ -56,7 +56,6 @@ optimizer = torch.optim.Adam([
 # scheduler= torch.optim.lr_scheduler.StepLR(optimizer,step_size=5,gamma=0.9)
 
 #%%--------------------------- evaluate model BEFORE training and model with real dictionary----------------------------------
-
 real_dictionary_MOMP_model = MOMP_model(real_BS_ant_position, real_BS_gains, real_BS_coupling_coeff, real_MS_ant_position,
                  subcarriers, BS_DoA, MS_DoA, delays)
 
@@ -86,14 +85,7 @@ for i in tqdm(range(nb_epochs)):
         H_batched  =   H_train[user_idx].to(device)
         Y_batched=Y_batched.squeeze()
         H_batched=H_batched.squeeze()
-        # if i==0 and b==0: #TODO see if forward handles more than 1 channel
-        #     with torch.no_grad():
-        #         # train loss
-        #         res,_,_ = unfolded_OMP_model.forward(Y_train, sigma2)
-        #         train_losses.append(NMSE(H_train,Y_train-res))
-        #         # validation loss
-        #         res,_,_ = unfolded_OMP_model.forward(Y_val, sigma2)
-        #         valid_losses.append(NMSE(H_val,Y_val-res))
+
         for i, p in enumerate(unfolded_MOMP_model.MS_learnable_pos_list):
             p.requires_grad_(i == user_idx)
     ################################## channel estimation #####################################################
@@ -134,7 +126,6 @@ for i in tqdm(range(nb_epochs)):
 unfolded_MOMP_model.eval()
 with torch.no_grad():
     H_test_MOMPnet = model_estimation(Y_test, unfolded_MOMP_model, sigma2)
-
     # Compute NMSEs
     NMSE_MOMP=NMSE(H_test.reshape(-1, *H_test.shape[2:]), H_test_MOMPnet.reshape(-1, *H_test_MOMPnet.shape[2:]))
 
@@ -146,6 +137,7 @@ save_dict = {
     'model_state_dict': unfolded_MOMP_model.state_dict(),
     'NMSE0': NMSE_nominal,
     'NMSEZ': NMSE_MOMP,
+    'NMSE_real': NMSE_real,
     'train_losses': train_losses_list,
     'valid_losses': valid_losses_list
 }
@@ -222,28 +214,6 @@ plt.title('Mean NMSE comparison')
 plt.grid(True, which='both', linestyle='--', alpha=0.5)
 plt.tight_layout()
 plt.show()
-
-# #old school
-# channels_idx = np.arange(1, len(NMSE0) + 1)
-# width = 0.2
-# NMSE0 = NMSE0.reshape(-1)  # shape: [num_channels]
-# NMSEZ = NMSEZ.reshape(-1)
-# NMSE_opt = NMSE_opt.reshape(-1)
-# plt.figure(figsize=(8, 5))
-# # Then detach and convert to numpy
-
-# bars1 = plt.bar(channels_idx - width, NMSE0.detach().cpu().numpy(), width,
-#                 label='MOMP with nominal Dict', color=color_nominal,alpha=0.7)
-# bars2 = plt.bar(channels_idx , NMSEZ.detach().cpu().numpy(), width,
-#                 label='unfolded MOMP', color=color_MOMP,alpha=0.7)
-# bars0 = plt.bar(channels_idx + width, NMSE_opt.detach().cpu().numpy(), width,
-#                 label='MOMP with real Dict', color=color_real)
-# plt.semilogy()
-# plt.xticks(channels_idx)
-# plt.legend()
-# plt.show()
-
-
 
 ################################################################################################################################################################################
 ##################################################################  learned parameters #########################################################################################
@@ -417,22 +387,23 @@ plt.show()
 
 
 # %%
-from saved_data_loader import *
-# LOAD TRAINED MODELS
-############################ MOMP ############################
-Umax=5
-Pmax=100
-nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(Umax)], dim=0)
-unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
-                 subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
-# Load everything
-# checkpoint = torch.load('.saved_data/.saved_models/MOMP_model_and_metrics.pth')
-checkpoint = torch.load('MOMP_model_and_metrics.pth')
-# Load model weights
-unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
-# Load the lists
-NMSE_nominal = checkpoint['NMSE0']
-NMSE_MOMP = checkpoint['NMSEZ']
-train_losses_list = checkpoint['train_losses']
-valid_losses_list = checkpoint['valid_losses']
-# %%
+# from saved_data_loader import *
+# # LOAD TRAINED MODELS
+# ############################ MOMP ############################
+# Umax=5
+# Pmax=100
+# nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(Umax)], dim=0)
+# unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
+#                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
+# # Load everything
+# # checkpoint = torch.load('.saved_data/.saved_models/MOMP_model_and_metrics.pth')
+# checkpoint = torch.load('MOMP_model_and_metrics.pth')
+# # Load model weights
+# unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
+# # Load the lists
+# NMSE_nominal = checkpoint['NMSE0']
+# NMSE_MOMP = checkpoint['NMSEZ']
+# # NMSE_real = checkpoint['NMSE_real']
+# train_losses_list = checkpoint['train_losses']
+# valid_losses_list = checkpoint['valid_losses']
+
