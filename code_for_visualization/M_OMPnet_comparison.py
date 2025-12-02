@@ -20,7 +20,7 @@ print(f"Working directory set to: {Path.cwd()}")
 sys.path.append(str(project_root))
 from saved_data_loader import *
 from models.MOMP_model import MOMP_model
-from models.OMP_model import OMP_model
+from models.OMP_model import OMP_3D_model
 from utils.training_utils import *
 
 SNR_average=10*torch.log10(torch.mean(torch.sum(torch.abs(channels)**2, axis=(2, 3, 4))) / (16*8*128 * sigma2))
@@ -31,8 +31,8 @@ Umax,Pmax=5,10
 H=channels[:Umax,:Pmax] #([Umax,Pmax, 16, 8, 128])
 Y=observations[:Umax,:Pmax] #temporarily 
 #------------------------------------  normalize channels  ----------------------------------------------------------
-H_normalized = H / torch.sqrt(torch.sum(torch.abs(H)**2, dim=(-3, -2, -1), keepdim=True))
-Y_normalized = Y / torch.sqrt(torch.sum(torch.abs(Y)**2, dim=(-3, -2, -1), keepdim=True))
+H_normalized = normalize(H)
+Y_normalized = normalize(Y)
 #-------------------------------Get train, validation and test data -------------------------------------------------
 train_test_ratio=0.8
 tt_split_index=int(H_normalized.shape[1] * train_test_ratio)
@@ -54,16 +54,17 @@ unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nomi
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 
 checkpoint = torch.load('MOMP_model_and_metrics.pth')
+checkpoint = torch.load('.saved_data/.saved_models/MOMP_5100.pth')
 # Load model weights
 unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
 # Load the lists
 NMSE_nominal_MOMP = checkpoint['NMSE0']
 NMSE_MOMP = checkpoint['NMSEZ']
-NMSE_real_MOMP = checkpoint['NMSE_real']
+# NMSE_real_MOMP = checkpoint['NMSE_real']
 train_losses_MOMP = checkpoint['train_losses']
 valid_losses_MOMP = checkpoint['valid_losses']
-
-unfolded_OMP_model = OMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
+#%%
+unfolded_OMP_model = OMP_3D_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 
 checkpoint = torch.load('OMP_model_and_metrics.pth')
@@ -114,10 +115,6 @@ nmse2 = NMSE_OMP
 nmse3 = NMSE_MOMP
 nmse4 = NMSE_real_MOMP
 # idx = torch.where(nmse0 < 1)
-# nmse0 = nmse_0[idx]
-# nmse1 = nmse_1[idx]
-# nmse2 = nmse_2[idx]
-# nmse3 = nmse_3[idx]
 
 # Compute means
 means = [

@@ -43,7 +43,7 @@ class MOMP_model(nn.Module):
             self.nb_BS_antennas = len(BS_ant_position)  # number of BS antennas
 
 
-    def forward(self, H, user_idx, sigma2_est, iter_max=30, refine_iter=2):
+    def forward(self, Y, user_idx, sigma2_est, iter_max=30, refine_iter=2):
         """
         Performs MOMP to approximate
         the channel H using dictionaries D1, D2, and D3.
@@ -85,13 +85,13 @@ class MOMP_model(nn.Module):
         # --------------------------------------------------------------------------
         # Initialization
         # --------------------------------------------------------------------------
-        N = H.numel()              # Total number of elements in H
+        N = Y.numel()              # Total number of elements in H
         stop = False
         iter = 0
         I_list = []                # List of selected index triplets per iteration
-        h_reshaped = H.reshape(-1) # Flattened channel tensor
+        h_reshaped = Y.reshape(-1) # Flattened channel tensor
         D_I_list = []              # List of selected atoms
-        r = H                      # Initialize residual with input tensor
+        r = Y                      # Initialize residual with input tensor
 
         # --------------------------------------------------------------------------
         # Main MOMP iteration loop
@@ -161,7 +161,7 @@ class MOMP_model(nn.Module):
             # Update residual and iteration counter
             # ----------------------------------------------------------------------
             r_reshaped = h_reshaped - proj_h
-            r = r_reshaped.reshape(H.shape)
+            r = r_reshaped.reshape(Y.shape)
             iter += 1
 
             # ----------------------------------------------------------------------

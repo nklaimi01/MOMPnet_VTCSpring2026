@@ -267,8 +267,8 @@ def nmse_animation(nmse_1,nmse_2,logscale,save=None,labels=['OMP','MOMP'],colors
 
 
     # Initial bars
-    bars1 = ax.bar(channels_idx - width/2, nmse_1[0], width, label=labels[0], color=colors[0])
-    bars2 = ax.bar(channels_idx + width/2, nmse_2[0], width, label=labels[1], color=colors[1])
+    bars1 = ax.bar(channels_idx - width/2, nmse_1[0], width, label=labels[0], color=colors[0], alpha=0.7)
+    bars2 = ax.bar(channels_idx + width/2, nmse_2[0], width, label=labels[1], color=colors[1], alpha=0.7)
     for xi, yi in zip(channels_idx, nmse_1[0]):
         ax.hlines(y=yi, xmin=xi-0.4, xmax=xi+0.4, colors="gray", linestyles=":")
 
@@ -302,7 +302,7 @@ def nmse_animation(nmse_1,nmse_2,logscale,save=None,labels=['OMP','MOMP'],colors
     # Iteration text
     iteration_text = ax.text(
         0.95, 0.95, '', transform=ax.transAxes,
-        ha='right', va='top', fontsize=12, color='blue'
+        ha='right', va='top', fontsize=12, color='green'
     )
 
     # min_nmse_1,_ = nmse_1.min(axis=0)

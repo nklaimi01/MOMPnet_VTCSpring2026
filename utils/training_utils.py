@@ -2,9 +2,17 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Circle
-
+import time
 
 import torch
+def normalize(H):
+    if H.dim() == 4 or H.dim()==5:
+        dims = (1, 2, 3)
+    elif H.dim() == 2:
+        dims = (1,)
+    else:
+        raise ValueError(f"channel must be 2-D, 4-D or 5-D, got {H.dim()}-D")
+    return H / torch.sqrt(torch.sum(torch.abs(H)**2, dim=dims, keepdim=True))
 
 def stack_with_padding(tensors, dim=0, length=None, zero_padding=False):
     """
@@ -46,11 +54,15 @@ def stack_with_padding(tensors, dim=0, length=None, zero_padding=False):
 
 
 def NMSE(channel,channel_estimation):
-    if channel.dim() == 3:
-        channel = channel.unsqueeze(0)  # [1, Nbs, Nms, Nsub]
-    if channel_estimation.dim() == 3:  
-        channel_estimation = channel_estimation.unsqueeze(0)  # add batch dimension
-    return torch.sum(torch.abs(channel-channel_estimation)**2,dim=(-3,-2,-1))/torch.sum(torch.abs(channel)**2,dim=(-3,-2,-1))
+    if channel.dim() == 4 or channel.dim()==5:
+        dims = (1, 2, 3)
+    elif channel.dim() == 2:
+        dims = (1,)
+    else:
+        raise ValueError(f"channel must be 2-D , 4-D or 5-D, got {channel.dim()}-D")
+
+    return torch.sum(torch.abs(channel - channel_estimation)**2, dim=dims) / \
+        torch.sum(torch.abs(channel)**2, dim=dims)
 
 def model_estimation(Y, model, sigma2):
             H_est = torch.zeros_like(Y)
@@ -64,7 +76,6 @@ def model_estimation(Y, model, sigma2):
             return H_est
 
 
-
 def plot_antennas_with_parameters(
     ax, positions_y, gains, coupling_c1, color="C0", label=None,
     positions_scale=0.8,mag_scale=1.2, coupling_line_scale=1.0,
@@ -72,8 +83,8 @@ def plot_antennas_with_parameters(
     circle_alpha=0.25, zorder_base=10, y_offset=0.0,
     center_marker=True, center_marker_size=20
 ):
-    median_spacing = np.median(np.diff(positions_y))  # in λ
-    mag_scale = mag_scale * median_spacing                 # circles ≈ 30% of spacing
+    # median_spacing = np.median(np.diff(positions_y))  # in λ
+    # mag_scale = mag_scale * median_spacing                 # circles ≈ 30% of spacing
 
     """Plot one set of antenna parameters (offset by y_offset)."""
     gains = np.asarray(gains).astype(np.complex128)
@@ -177,3 +188,118 @@ def plot_multiple_parameter_sets(
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.tight_layout()
     return fig, ax
+
+
+#%% functions
+def OMP(Y, D,sigma2_est=None, iter_max=10):
+    '''handles batched operations'''
+    N=Y.shape[1:].numel()
+    iter = 0
+    I_list=[]
+    D_I_list=[]
+    y=Y.unsqueeze(-1)
+    r = y  # ([204800, 8, 1]) => batch_size= 204800
+
+    stop=False
+
+    while not stop:
+        corr=(torch.conj(D).T).unsqueeze(0)@r  #([*, 80,1])
+        corr=corr.squeeze() #([*,80])
+        i = torch.argmax(corr.abs()**2,dim=1) #([*])
+        I_list.append(i)
+
+        D_I_list.append(D[:,i].T)
+        D_I=torch.stack(D_I_list,-1) #([*, 8, nb_active_atoms])
+
+        # Step 4: projection (solve least-squares to update coefficients)
+        gamma = torch.linalg.lstsq(D_I, y).solution
+        proj_y = D_I @ gamma
+
+        # Step 5: update residual
+        r = y - proj_y
+
+        iter += 1
+
+        if sigma2_est is None:
+            SC=False
+        else:
+            SC=torch.sum(torch.abs(r)**2) <= N * sigma2_est
+            
+        if  SC or iter > iter_max - 1:
+            stop = True
+
+    # Stack all estimations along first dimension
+    I=torch.stack(I_list,-1) #([*, nb_active_atoms])
+    gamma=gamma.squeeze(-1) #([*, nb_active_atoms])
+    r=r.squeeze(-1)
+    return r,I,gamma
+
+def MOD(Y,D0,OMP_iter,epsilon,iter_max=1000):
+    '''implementation of the method of optimal directions (MOD), a Dictionary learning algorithm'''
+    batch_size=Y.shape[0]
+    stop=False
+    iter=0
+    start_MOD=time.time()
+    while not stop: 
+        # step 1: sparse recovery
+        _,I,gamma=OMP(Y,D0,iter_max=OMP_iter)
+        Gamma=torch.zeros((batch_size,D0.shape[1]),dtype=gamma.dtype)
+        batch_idx = torch.arange(batch_size).unsqueeze(-1)
+        Gamma[batch_idx, I] = gamma
+        #step 2: update dictionary 
+        YmT=Y.T # shape ([N_M, N_obs])
+        Gamma=Gamma.T # shape ([A_M, N_obs])
+        Gamma_H = Gamma.conj().T  # Hermitian (conjugate transpose)
+        term = Gamma @ Gamma_H
+        term_inv = torch.linalg.inv(term)
+        D_MOD = YmT @ Gamma_H @ term_inv
+        D_MOD = D_MOD / torch.norm(D_MOD, dim=0, keepdim=True)  # normalize atoms
+
+        # #using torch.linalg.lstsq
+        # sol = torch.linalg.lstsq(Gamma, Y)
+        # D_MOD = sol.solution          # shape (N_atoms, N_features)
+        # D_MOD = D_MOD.T               # (N_features, N_atoms)
+        # D_MOD = D_MOD / (torch.norm(D_MOD, dim=0, keepdim=True) + 1e-8)
+        if torch.norm(D_MOD-D0)/torch.norm(D0)<epsilon or iter>iter_max:
+            stop=True
+        
+        iter+=1
+        # print(f'iteration: {iter}, SC={torch.norm(D_MOD-D0)/torch.norm(D0)}')
+        D0=D_MOD
+    end_MOD = time.time()
+    print(f"MOD time: {end_MOD - start_MOD:.6f} seconds")
+    
+    return D_MOD
+
+def mode_unfold(Y, m):
+    '''reshape observation by m-mode unfolding'''
+    # Y is an N-way tensor
+    N = Y.ndim
+    
+    # Create permutation: bring dimension r to the front
+    perm = [i for i in range(N) if i != m] + [m] 
+    
+    # Permute and reshape
+    return Y.permute(*perm).reshape(-1, Y.shape[m])
+
+def recover_unfold(Y_unf, r, shape):
+    '''recover observation shape'''
+    N = len(shape)
+
+    # Build the same perm used in unfolding
+    perm = [i for i in range(N) if i != r] + [r]
+
+    # Compute the permuted shape (after unfolding)
+    permuted_shape = [shape[i] for i in perm]
+
+    # First reshape back to the permuted tensor
+    Y_perm = Y_unf.reshape(*permuted_shape)
+
+    # Now invert permutation
+    # Create inverse permutation: inv_perm[perm[i]] = i
+    inv_perm = [0] * N
+    for i, p in enumerate(perm):
+        inv_perm[p] = i
+
+    # Return tensor in original order
+    return Y_perm.permute(*inv_perm)

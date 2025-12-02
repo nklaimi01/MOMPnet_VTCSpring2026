@@ -18,8 +18,8 @@ H=channels[:Umax,:Pmax] #temporarily
 Y=observations[:Umax,:Pmax] #temporarily 
 nb_users=H.shape[0]
 #------------------------------------  normalize channels  ----------------------------------------------------------
-H_normalized = H / torch.sqrt(torch.sum(torch.abs(H)**2, dim=(-3, -2, -1), keepdim=True))
-Y_normalized = Y / torch.sqrt(torch.sum(torch.abs(Y)**2, dim=(-3, -2, -1), keepdim=True))
+H_normalized = normalize(H)
+Y_normalized = normalize(Y)
 #-------------------------------Get train, validation and test data -------------------------------------------------
 train_test_ratio=0.8
 tt_split_index=int(H_normalized.shape[1] * train_test_ratio)
@@ -233,39 +233,39 @@ real_BS_gains = np.asarray(real_BS_gains)
 #%%
 ####################################### plot learned BS postions #############################################
 
-# --- X and Y coordinates ---
-x = real_BS_ant_position[:, 0]
-y_nominal = nominal_BS_ant_position[:, 1]
-y_real = real_BS_ant_position[:, 1]
-y_MOMP = learned_BS_pos
+# # --- X and Y coordinates ---
+# x = real_BS_ant_position[:, 0]
+# y_nominal = nominal_BS_ant_position[:, 1]
+# y_real = real_BS_ant_position[:, 1]
+# y_MOMP = learned_BS_pos
 
-# --- Apply small horizontal offsets for visibility ---
-offset = 0.03  # adjust if antennas are close
-x_nominal = x - offset *1.5
-x_real    = x - offset * 0.5
-x_MOMP     = x + offset *0.5
+# # --- Apply small horizontal offsets for visibility ---
+# offset = 0.03  # adjust if antennas are close
+# x_nominal = x - offset *1.5
+# x_real    = x - offset * 0.5
+# x_MOMP     = x + offset *0.5
 
-# --- Plot ---
-plt.figure(figsize=(6,5))
+# # --- Plot ---
+# plt.figure(figsize=(6,5))
 
-plt.scatter(x_nominal, y_nominal, label='Nominal BS', marker='x', color=color_nominal, s=50, linewidths=1)
-plt.scatter(x_real, y_real, label='Real BS', color=color_real_BS, s=70, edgecolors='k', alpha=0.8)
-plt.scatter(x_MOMP, y_MOMP, label='Learned BS (MOMP)', marker='d',color=color_MOMP, s=70, edgecolors='k', alpha=0.8)
+# plt.scatter(x_nominal, y_nominal, label='Nominal BS', marker='x', color=color_nominal, s=50, linewidths=1)
+# plt.scatter(x_real, y_real, label='Real BS', color=color_real_BS, s=70, edgecolors='k', alpha=0.8)
+# plt.scatter(x_MOMP, y_MOMP, label='Learned BS (MOMP)', marker='d',color=color_MOMP, s=70, edgecolors='k', alpha=0.8)
 
-# --- Optional: connect each antenna index with dotted lines ---
-for i in range(len(x)):
-    plt.plot([x_nominal[i], x_real[i], x_MOMP[i]],
-             [y_nominal[i], y_real[i], y_MOMP[i]],
-             color='gray', linestyle='--', alpha=0.4, linewidth=1)
+# # --- Optional: connect each antenna index with dotted lines ---
+# for i in range(len(x)):
+#     plt.plot([x_nominal[i], x_real[i], x_MOMP[i]],
+#              [y_nominal[i], y_real[i], y_MOMP[i]],
+#              color='gray', linestyle='--', alpha=0.4, linewidth=1)
 
-# --- Labels and style ---
-plt.title('Mobile Station Antenna Positions with real gains and mutual coupling', fontsize=14)
-plt.xlabel('X-axis [m]')
-plt.ylabel('Y-axis [m]')
-plt.legend(loc='best')
-plt.grid(True, linestyle='--', alpha=0.4)
-plt.tight_layout()
-plt.show()
+# # --- Labels and style ---
+# plt.title('Mobile Station Antenna Positions with real gains and mutual coupling', fontsize=14)
+# plt.xlabel('X-axis [m]')
+# plt.ylabel('Y-axis [m]')
+# plt.legend(loc='best')
+# plt.grid(True, linestyle='--', alpha=0.4)
+# plt.tight_layout()
+# plt.show()
 #%%
 ############################################ plot learned BS antenna Gains ####################################
 # --- Prepare data for plotting ---
@@ -274,53 +274,42 @@ real_BS_gains_normalized = real_BS_gains / np.sqrt(np.sum((np.abs(real_BS_gains)
 nominal_BS_gains_normalized = nominal_BS_gains / np.sqrt(np.sum((np.abs(nominal_BS_gains)**2)))
 learned_gains_normalized= learned_gains / np.sqrt(np.sum((np.abs(learned_gains)**2)))
 
-idx = np.arange(len(real_BS_gains_normalized))
-mag_real = np.abs(real_BS_gains_normalized)
-mag_nominal = np.abs(nominal_BS_gains_normalized)
-mag_MOMP = np.abs(learned_gains_normalized)
+# idx = np.arange(len(real_BS_gains_normalized))
+# mag_real = np.abs(real_BS_gains_normalized)
+# mag_nominal = np.abs(nominal_BS_gains_normalized)
+# mag_MOMP = np.abs(learned_gains_normalized)
 
-phase_real = np.angle(real_BS_gains_normalized)
-phase_nominal = np.angle(nominal_BS_gains_normalized)
-phase_MOMP = np.angle(learned_gains_normalized)
+# phase_real = np.angle(real_BS_gains_normalized)
+# phase_nominal = np.angle(nominal_BS_gains_normalized)
+# phase_MOMP = np.angle(learned_gains_normalized)
 
-# --- Plot magnitude comparison ---
-plt.figure(figsize=(10,4))
-plt.subplot(1,2,1)
-plt.plot(idx, mag_real, 'o-', label='Real', color=color_real_BS)
-plt.plot(idx, mag_nominal, 'x--', label='Nominal', color=color_nominal)
-plt.plot(idx, mag_MOMP, 'd-', label='MOMP Learned', color=color_MOMP)
-plt.title('Antenna Gain Magnitudes')
-plt.xlabel('Antenna Index')
-plt.ylabel('|Gain|')
-plt.legend()
-plt.grid(True)
+# # --- Plot magnitude comparison ---
+# plt.figure(figsize=(10,4))
+# plt.subplot(1,2,1)
+# plt.plot(idx, mag_real, 'o-', label='Real', color=color_real_BS)
+# plt.plot(idx, mag_nominal, 'x--', label='Nominal', color=color_nominal)
+# plt.plot(idx, mag_MOMP, 'd-', label='MOMP Learned', color=color_MOMP)
+# plt.title('Antenna Gain Magnitudes')
+# plt.xlabel('Antenna Index')
+# plt.ylabel('|Gain|')
+# plt.legend()
+# plt.grid(True)
 
-# --- Plot phase comparison ---
-plt.subplot(1,2,2)
-plt.plot(idx, phase_real, 'o-', label='Real', color=color_real_BS)
-plt.plot(idx, phase_nominal, 'x--', label='Nominal', color=color_nominal)
-plt.plot(idx, phase_MOMP, 'd-', label='MOMP Learned', color=color_MOMP)
-plt.title('Antenna Gain Phases')
-plt.xlabel('Antenna Index')
-plt.ylabel('Phase [rad]')
-plt.legend()
-plt.grid(True)
+# # --- Plot phase comparison ---
+# plt.subplot(1,2,2)
+# plt.plot(idx, phase_real, 'o-', label='Real', color=color_real_BS)
+# plt.plot(idx, phase_nominal, 'x--', label='Nominal', color=color_nominal)
+# plt.plot(idx, phase_MOMP, 'd-', label='MOMP Learned', color=color_MOMP)
+# plt.title('Antenna Gain Phases')
+# plt.xlabel('Antenna Index')
+# plt.ylabel('Phase [rad]')
+# plt.legend()
+# plt.grid(True)
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 #%%
 ####################################### plot learned MS postions #############################################
-MS_pos_error=[]
-for u in range(Umax):
-    # --- Calcul des erreurs quadratiques ---
-    err_nominal = np.sum(np.abs(real_MS_ant_position[u,:, 1] - nominal_MS_ant_position[:, 1])**2)
-    err_learned_MOMP = np.sum(np.abs(real_MS_ant_position[u,:, 1] - learned_MS_pos[u])**2)
-
-    # --- Affichage des valeurs ---
-    print(f"‖P_real - P_nominal‖²₂ = {err_nominal.item():.4e}")
-    print(f"‖P_real - P_learnedMOMP‖²₂ = {err_learned_MOMP.item():.4e}")
-
-#%%
 # --- X and Y coordinates ---
 for u in range(Umax):
     x = real_MS_ant_position[0, :, 0]
@@ -356,20 +345,6 @@ for u in range(Umax):
     plt.tight_layout()
     plt.show()
 
-# #%%
-# learned_BS_pos_OMP=list(unfolded_OMP_model.parameters())[0].detach().numpy()  # first parameter tensor
-# learned_BS_pos_MOMP=list(unfolded_MOMP_model.parameters())[0].detach().numpy()  # first parameter tensor
-
-# # --- Calcul des erreurs quadratiques ---
-# err_nominal = torch.sum(torch.abs(real_BS_ant_position[:, 1] - nominal_BS_ant_position[:, 1])**2)
-# err_learned_OMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_OMP))**2)
-# err_learned_MOMP = torch.sum(torch.abs(real_BS_ant_position[:, 1] - torch.tensor(learned_BS_pos_MOMP))**2)
-
-# # --- Affichage des valeurs ---
-# print(f"‖P_real - P_nominal‖²₂ = {err_nominal.item():.4e}")
-# print(f"‖P_real - P_learnedOMP‖²₂ = {err_learned_OMP.item():.4e}")
-# print(f"‖P_real - P_learnedMOMP‖²₂ = {err_learned_MOMP.item():.4e}")
-
 # %% ALL BS parameters in one fig
    
 l=2/lambda_
@@ -385,8 +360,34 @@ fig, ax = plot_multiple_parameter_sets(
 )
 plt.show()
 
+#%% -------------------------------------- Quantitatif evaluation: quadratic error --------------------------------
+# BS antenna positions
+print('---------- BS Antenna parameters ---------')
+print(f"‖g_real - g_nominal‖²₂ = {np.linalg.norm(real_BS_gains - nominal_BS_gains)**2:.4e}")
+print(f"‖g_real - g_learned‖²₂ = {np.linalg.norm(real_BS_gains - learned_gains)**2:.4e}")
 
-# %%
+print(f"‖P_real - P_nominal‖²₂ = {np.linalg.norm(real_BS_ant_position[:,1] - nominal_BS_ant_position[:,1])**2:.4e}")
+print(f"‖P_real - P_learned‖²₂ = {np.linalg.norm(real_BS_ant_position[:,1] - learned_BS_pos)**2:.4e}")
+
+print(f'real coupling coeff: {real_BS_coupling_coeff:.2e} \nlearned coupling coeff: {learned_coupling:.2e}')
+#MS antenna positions
+print('\n---------- MS Antenna parameters ---------')
+rows = []
+for u in range(Umax):
+    err_nominal = np.linalg.norm(real_MS_ant_position[u, :, 1] - nominal_MS_ant_position[:, 1])
+    err_learned = np.linalg.norm(real_MS_ant_position[u, :, 1] - learned_MS_pos[u])
+
+    rows.append([u, err_nominal, err_learned])
+
+# ---- print as a formatted table ----
+header = f"{'user':>4} | {'‖P_real - P_nominal‖²₂':>25} | {'‖P_real - P_learned‖²₂':>25}"
+print(header)
+print("-"*len(header))
+
+for u, e_nom, e_learn in rows:
+    print(f"{u:4d} | {e_nom:25.4e} | {e_learn:25.4e}")
+
+#%%
 # from saved_data_loader import *
 # # LOAD TRAINED MODELS
 # ############################ MOMP ############################
@@ -396,8 +397,8 @@ plt.show()
 # unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
 #                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 # # Load everything
-# # checkpoint = torch.load('.saved_data/.saved_models/MOMP_model_and_metrics.pth')
-# checkpoint = torch.load('MOMP_model_and_metrics.pth')
+# checkpoint = torch.load('.saved_data/.saved_models/MOMP_5100.pth')
+# # checkpoint = torch.load('MOMP_model_and_metrics.pth')
 # # Load model weights
 # unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
 # # Load the lists
@@ -407,3 +408,14 @@ plt.show()
 # train_losses_list = checkpoint['train_losses']
 # valid_losses_list = checkpoint['valid_losses']
 
+# learned_BS_pos=list(unfolded_MOMP_model.parameters())[0].detach().numpy()  # first parameter tensor
+# learned_gains=list(unfolded_MOMP_model.parameters())[1].detach().numpy()  # 2nd parameter tensor
+# learned_coupling=list(unfolded_MOMP_model.parameters())[2].detach().numpy()  # 3rd parameter tensor
+# learned_MS_pos=torch.stack([p.detach() for p in unfolded_MOMP_model.MS_learnable_pos_list], 0).cpu().numpy()  # 4th parameter tensor
+# nominal_BS_gains = np.asarray(BS_gains['nominal_BS_gains'])
+# nominal_BS_coupling_coeff = np.asarray(BS_coupling['nominal_BS_coupling_coeff'],dtype=np.complex128)
+# real_BS_ant_position = np.asarray(real_BS_ant_position)
+# nominal_BS_ant_position = np.asarray(nominal_BS_ant_position)
+# real_MS_ant_position = np.asarray(real_MS_ant_position)
+# nominal_MS_ant_position = np.asarray(nominal_MS_ant_position)
+# real_BS_gains = np.asarray(real_BS_gains)

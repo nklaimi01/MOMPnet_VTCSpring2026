@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
-from models.OMP_model import OMP_model
+from models.OMP_model import OMP_3D_model
 from utils.dictionary_gen_utils import *
 import matplotlib.pyplot as plt
 from saved_data_loader import *
@@ -16,8 +16,8 @@ H=channels[:Umax,:Pmax] #temporarily
 Y=observations[:Umax,:Pmax] #temporarily 
 nb_users=H.shape[0]
 #------------------------------------  normalize channels  ----------------------------------------------------------
-H_normalized = H / torch.sqrt(torch.sum(torch.abs(H)**2, dim=(-3, -2, -1), keepdim=True))
-Y_normalized = Y / torch.sqrt(torch.sum(torch.abs(Y)**2, dim=(-3, -2, -1), keepdim=True))
+H_normalized = normalize(H)
+Y_normalized = normalize(Y)
 #-------------------------------Get train, validation and test data -------------------------------------------------
 train_test_ratio=0.8
 tt_split_index=int(H_normalized.shape[1] * train_test_ratio)
@@ -41,7 +41,7 @@ Y_val     = Y_aux[:,tv_split_index:] # int(valid_size/U)].to(device)
 # parameters defining
 # model defining
 nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(nb_users)], dim=0) #!!!
-unfolded_OMP_model = OMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff,nominal_MS_ant_position_stacked,
+unfolded_OMP_model = OMP_3D_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff,nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)
 
 optimizer = torch.optim.Adam([
@@ -53,7 +53,7 @@ optimizer = torch.optim.Adam([
 # scheduler= torch.optim.lr_scheduler.StepLR(optimizer,step_size=5,gamma=0.9)
 
 #%%--------------------------- evaluate model BEFORE training and model with real dictionary----------------------------------
-real_dictionary_OMP_model = OMP_model(real_BS_ant_position, real_BS_gains, real_BS_coupling_coeff, real_MS_ant_position,
+real_dictionary_OMP_model = OMP_3D_model(real_BS_ant_position, real_BS_gains, real_BS_coupling_coeff, real_MS_ant_position,
                  subcarriers, BS_DoA, MS_DoA, delays)
 
 unfolded_OMP_model.eval()
