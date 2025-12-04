@@ -7,7 +7,7 @@ import time
 import torch
 def normalize(H):
     if H.dim() == 4 or H.dim()==5:
-        dims = (1, 2, 3)
+        dims = (-3,-2,-1)
     elif H.dim() == 2:
         dims = (1,)
     else:
@@ -55,26 +55,24 @@ def stack_with_padding(tensors, dim=0, length=None, zero_padding=False):
 
 def NMSE(channel,channel_estimation):
     if channel.dim() == 4 or channel.dim()==5:
-        dims = (1, 2, 3)
+        dims = (-3,-2, -1)
     elif channel.dim() == 2:
         dims = (1,)
     else:
         raise ValueError(f"channel must be 2-D , 4-D or 5-D, got {channel.dim()}-D")
 
-    return torch.sum(torch.abs(channel - channel_estimation)**2, dim=dims) / \
-        torch.sum(torch.abs(channel)**2, dim=dims)
+    return torch.sum(torch.abs(channel - channel_estimation)**2, dim=dims) /torch.sum(torch.abs(channel)**2, dim=dims)
 
-def model_estimation(Y, model, sigma2):
+def model_estimation(Y, model, sigma2_est):
             H_est = torch.zeros_like(Y)
             for u in range(Y.shape[0]):
                 for p in range(Y.shape[1]):
                     y = Y[u, p]
                     y = y.squeeze()
 
-                    res, _, _ = model.forward(y, u, sigma2)
+                    res, _, _ = model.forward(y, u, sigma2_est)
                     H_est[u, p] = y - res
             return H_est
-
 
 def plot_antennas_with_parameters(
     ax, positions_y, gains, coupling_c1, color="C0", label=None,
@@ -234,7 +232,7 @@ def OMP(Y, D,sigma2_est=None, iter_max=10):
     r=r.squeeze(-1)
     return r,I,gamma
 
-def MOD(Y,D0,OMP_iter,epsilon,iter_max=1000):
+def MOD(Y,D0,OMP_iter,epsilon,iter_max=1000,torchlstsq=False):
     '''implementation of the method of optimal directions (MOD), a Dictionary learning algorithm'''
     batch_size=Y.shape[0]
     stop=False
@@ -247,19 +245,21 @@ def MOD(Y,D0,OMP_iter,epsilon,iter_max=1000):
         batch_idx = torch.arange(batch_size).unsqueeze(-1)
         Gamma[batch_idx, I] = gamma
         #step 2: update dictionary 
-        YmT=Y.T # shape ([N_M, N_obs])
-        Gamma=Gamma.T # shape ([A_M, N_obs])
-        Gamma_H = Gamma.conj().T  # Hermitian (conjugate transpose)
-        term = Gamma @ Gamma_H
-        term_inv = torch.linalg.inv(term)
-        D_MOD = YmT @ Gamma_H @ term_inv
-        D_MOD = D_MOD / torch.norm(D_MOD, dim=0, keepdim=True)  # normalize atoms
+        if torchlstsq:
+            #using torch.linalg.lstsq
+            sol = torch.linalg.lstsq(Gamma, Y)
+            D_MOD = sol.solution          
+            D_MOD = D_MOD.T               
+            D_MOD = D_MOD / (torch.norm(D_MOD, dim=0, keepdim=True) + 1e-8) # normalize atoms
+        else:
+            YmT=Y.T # shape ([N_M, N_obs])
+            Gamma=Gamma.T # shape ([A_M, N_obs])
+            Gamma_H = Gamma.conj().T  
+            term = Gamma @ Gamma_H
+            term_inv = torch.linalg.inv(term)
+            D_MOD = YmT @ Gamma_H @ term_inv
+            D_MOD = D_MOD / torch.norm(D_MOD, dim=0, keepdim=True)  # normalize atoms
 
-        # #using torch.linalg.lstsq
-        # sol = torch.linalg.lstsq(Gamma, Y)
-        # D_MOD = sol.solution          # shape (N_atoms, N_features)
-        # D_MOD = D_MOD.T               # (N_features, N_atoms)
-        # D_MOD = D_MOD / (torch.norm(D_MOD, dim=0, keepdim=True) + 1e-8)
         if torch.norm(D_MOD-D0)/torch.norm(D0)<epsilon or iter>iter_max:
             stop=True
         

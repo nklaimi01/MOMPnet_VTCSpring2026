@@ -140,7 +140,7 @@ green_red_cmap = LinearSegmentedColormap.from_list(
 )
 fig, ax = plt.subplots(figsize=(6,5))
 # Main scatter for AoA errors
-sc = ax.hexbin(x_u, y_u, C=rde_nominal, cmap=green_red_cmap, vmin=0, vmax=60,alpha=0.8 )
+sc = ax.hexbin(x_u, y_u, C=rde_nominal, cmap=green_red_cmap, vmin=0, vmax=20,alpha=0.8 )
 plt.colorbar(sc, label="relative distance Error (m)")
 
 # BS marker
@@ -159,7 +159,7 @@ ax.axis('equal')  # ensure circle is not distorted
 
 fig, ax = plt.subplots(figsize=(6,5))
 # Main scatter for AoA errors
-sc = ax.hexbin(x_u, y_u, C=rde, cmap=green_red_cmap, vmin=0, vmax=60,alpha=0.8)
+sc = ax.hexbin(x_u, y_u, C=rde, cmap=green_red_cmap, vmin=0, vmax=20,alpha=0.8)
 plt.colorbar(sc, label="relative distance Error (m)")
 
 # BS marker

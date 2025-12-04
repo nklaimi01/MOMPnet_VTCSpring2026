@@ -145,7 +145,7 @@ class OMP_1D_model(nn.Module):
         self.nb_antennas = len(ant_position)  # number of antennas
 
 
-    def forward(self,Y,sigma2_est,iter_max=10):
+    def forward(self,Y,sigma2_est=None,iter_max=10):
         '''handles batched operations'''
 
         ant_position = torch.stack([self.fixed_ant_pos_x,self.learnable_ant_pos_y,self.fixed_ant_pos_z], dim=1)
@@ -193,17 +193,13 @@ class OMP_1D_model(nn.Module):
         return r,I,gamma
     
 
-class OMP_ML_model(nn.Module):
+class OMP_uncnstrd_model(nn.Module):
     def __init__(self, D, device=device):
-        
         super().__init__()
-        # --- BS antenna positions ---
         self.D = nn.Parameter(D.to(device))   # learnable Dictionary
 
-    def forward(self,Y,sigma2_est,iter_max=10):
+    def forward(self,Y,sigma2_est=None,iter_max=10):
         '''handles batched operations'''
-
-
         N=Y.shape[1:].numel()
         iter = 0
         I_list=[]

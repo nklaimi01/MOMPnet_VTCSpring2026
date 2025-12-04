@@ -8,8 +8,148 @@ from utils.dictionary_gen_utils import *
 import matplotlib.pyplot as plt
 from saved_data_loader import *
 from utils.training_utils import *
+#%%
+def MOMP(Y,D1,D2,D3, sigma2_est, iter_max=30, refine_iter=2):
+        """
+        Performs MOMP to approximate
+        the channel H using dictionaries D1, D2, and D3.
 
+        Parameters
+        ----------
+        H : torch.Tensor
+            Observed channel tensor to be approximated.
+        sigma2_est : float
+            Estimated noise variance for the stopping criterion.
+        iter_max : int, optional
+            Maximum number of iterations (default: 30).
+        refine_iter : int, optional
+            Number of refinement steps to improve atom selection (default: 2).
 
+        Returns
+        -------
+        r : torch.Tensor
+            Final residual tensor after MOMP iterations.
+        I : torch.Tensor
+            Indices of selected atoms [i1, i2, i3] at each iteration.
+        x : torch.Tensor
+            Coefficients corresponding to the selected atoms.
+
+        """
+        D1 = D1.to(dtype=torch.complex128)
+        D2 = D2.to(dtype=torch.complex128)
+        D3 = D3.to(dtype=torch.complex128)
+
+        # --------------------------------------------------------------------------
+        # Initialization
+        # --------------------------------------------------------------------------
+        N = Y.numel()              # Total number of elements in H
+        stop = False
+        iter = 0
+        I_list = []                # List of selected index triplets per iteration
+        h_reshaped = Y.reshape(-1) # Flattened channel tensor
+        D_I_list = []              # List of selected atoms
+        r = Y                      # Initialize residual with input tensor
+
+        # --------------------------------------------------------------------------
+        # Main MOMP iteration loop
+        # --------------------------------------------------------------------------
+        while not stop:
+            # Step 1: Compute correlations with D1 along the first dimension
+            corr1 = torch.einsum('ab,bms->ams', torch.conj(D1).T, r)
+            i1 = torch.argmax((corr1.abs()**2).sum(dim=(1, 2)))
+
+            # Step 2: Select best atom from D2 using the previous selection from D1
+            corr2 = torch.conj(D2).T @ corr1[i1]
+            i2 = torch.argmax((corr2.abs()**2).sum(dim=1))
+
+            # Step 3: Select best atom from D3 using the previous selections
+            corr3 = torch.conj(D3).T @ corr2[i2]
+            i3 = torch.argmax(torch.abs(corr3)**2)
+
+            # ----------------------------------------------------------------------
+            # Optional refinement of atom indices via local coordinate updates
+            # ----------------------------------------------------------------------
+            if refine_iter is not None:
+                atom = [i1, i2, i3]
+                D = [D1, D2, D3]
+
+                for _ in range(refine_iter):
+                    for d in range(len(atom)):
+                        # Identify the two remaining dimensions besides d
+                        other_idx1, other_idx2 = (set(range(len(atom))) - {d})
+
+                        # Extract the selected atoms along the other dimensions
+                        vec_0 = D[other_idx1][:, atom[other_idx1]]
+                        vec_1 = D[other_idx2][:, atom[other_idx2]]
+
+                        # Permute residual to align dimensions [other1, other2, d]
+                        r_permuted = r.permute(other_idx1, other_idx2, d)
+
+                        # Compute correlation along dimension d
+                        corr_d = torch.einsum('a,abc,b->c', torch.conj(vec_0), r_permuted, torch.conj(vec_1))
+                        corr_d = torch.matmul(torch.conj(D[d]).T, corr_d)
+
+                        # Update atom index along dimension d with the highest correlation
+                        i_d = torch.argmax(torch.abs(corr_d)**2)
+                        atom[d] = i_d
+
+                # Update selected indices after refinement
+                i1, i2, i3 = atom
+
+            # Store current triplet of selected atom indices
+            I_list.append(torch.tensor([i1, i2, i3], device=device))
+
+            # ----------------------------------------------------------------------
+            # Construct current dictionary from selected atoms (Kronecker structure)
+            # ----------------------------------------------------------------------
+            vec1 = D1[:, i1]
+            vec2 = D2[:, i2]
+            vec3 = D3[:, i3]
+            D_I_list.append(torch.kron(torch.kron(vec1, vec2), vec3))
+            D_I = torch.stack(D_I_list, 1)
+
+            # ----------------------------------------------------------------------
+            # Solve least squares problem to estimate coefficients
+            # ----------------------------------------------------------------------
+            x = torch.linalg.lstsq(D_I, h_reshaped).solution
+            proj_h = D_I @ x
+
+            # ----------------------------------------------------------------------
+            # Update residual and iteration counter
+            # ----------------------------------------------------------------------
+            r_reshaped = h_reshaped - proj_h
+            r = r_reshaped.reshape(Y.shape)
+            iter += 1
+
+            # ----------------------------------------------------------------------
+            # Check stopping criteria: residual energy or iteration limit
+            # ----------------------------------------------------------------------
+            if sigma2_est is None:
+                SC=False
+            else:
+                SC=torch.sum(torch.abs(r)**2) <= N * sigma2_est
+
+            if  SC or iter > iter_max - 1:
+                stop = True
+
+        # Stack selected atom indices across all iterations
+        I = torch.stack(I_list, 0)
+
+        return r, I, x
+
+def MOMP_estimation(Y, D1, D2, D3, sigma2_est):
+            H_est = torch.zeros_like(Y)
+            for u in range(Y.shape[0]):
+                if D2.dim()==2:
+                    D2u=D2
+                else:
+                    D2u=D2[u]
+                for p in range(Y.shape[1]):
+                    y = Y[u, p]
+                    y = y.squeeze()
+                    res, _, _ = MOMP(y,D1,D2u,D3, sigma2_est)
+                    H_est[u, p] = y - res
+            return H_est
 
 #%%--------------------------------------- preprocessing ------------------------------------------------------------
 Umax,Pmax=5,10
@@ -20,62 +160,58 @@ nb_users=H.shape[0]
 #------------------------------------  normalize channels  ----------------------------------------------------------
 H_normalized = normalize(H)
 Y_normalized = normalize(Y)
-#-------------------------------Get train, validation and test data -------------------------------------------------
-train_test_ratio=0.8
-tt_split_index=int(H_normalized.shape[1] * train_test_ratio)
-H_aux=H_normalized[:,:tt_split_index].to(device)
-Y_aux=Y_normalized[:,:tt_split_index].to(device)
+#-------------------------------Get train and validation data -------------------------------------------------
+train_val_ratio=0.8
+tt_split_index=int(H_normalized.shape[1] * train_val_ratio)
+H_train=H_normalized[:,:tt_split_index].to(device)
+Y_train=Y_normalized[:,:tt_split_index].to(device)
 
-# test data 
-H_test=H_normalized[:,tt_split_index:].to(device)
-Y_test=Y_normalized[:,tt_split_index:].to(device)
+# Validation data 
+H_val=H_normalized[:,tt_split_index:].to(device)
+Y_val=Y_normalized[:,tt_split_index:].to(device)
 
-#train data
-train_valid_ratio=0.8
-tv_split_index = int(H_aux.shape[1] * train_valid_ratio)
-H_train    = H_aux [:,:tv_split_index].to(device)
-Y_train   = Y_aux [:,:tv_split_index].to(device)
-# validation data 
-H_val      = H_aux [:,tv_split_index:] # int(valid_size/U)].to(device)
-Y_val     = Y_aux[:,tv_split_index:] # int(valid_size/U)].to(device)
 
+#%%############################### MOMP with real dictionary ################################################################
+H_val_realdict=MOMP_estimation(Y_val,real_BS_Dictionary,real_MS_Dictionaries,FRV_Dictionary,sigma2)
+NMSE_real=NMSE(H_val,H_val_realdict)
+
+H_val_nominaldict=MOMP_estimation(Y_val,nominal_BS_Dictionary,nominal_MS_Dictionary,FRV_Dictionary,sigma2)
+NMSE_nominal=NMSE(H_val,H_val_nominaldict)
 #%% ----------------------------------- Deep unfolding ------------------------------------------
 # parameters defining
 # model defining
 nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(nb_users)], dim=0) #!!!
-unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff,nominal_MS_ant_position_stacked,
+MOMPnet = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff,nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)
 #optimizer
 # optimizer = torch.optim.Adam(unfolded_MOMP_model.parameters(), lr=1e-4)
 optimizer = torch.optim.Adam([
-    {'params': unfolded_MOMP_model.BS_learnable_pos_y, 'lr':1e-3},
-    {'params': unfolded_MOMP_model.BS_ant_gains, 'lr':1e-2},
-    {'params': unfolded_MOMP_model.BS_coupling_coeff, 'lr':1e-2},
-    {'params': unfolded_MOMP_model.MS_learnable_pos_list, 'lr':1e-3},
+    {'params': MOMPnet.BS_learnable_pos_y, 'lr':1e-3},
+    {'params': MOMPnet.BS_ant_gains, 'lr':1e-2},
+    {'params': MOMPnet.BS_coupling_coeff, 'lr':1e-2},
+    {'params': MOMPnet.MS_learnable_pos_list, 'lr':1e-3},
 ])
 # scheduler= torch.optim.lr_scheduler.StepLR(optimizer,step_size=5,gamma=0.9)
 
 #%%--------------------------- evaluate model BEFORE training and model with real dictionary----------------------------------
-real_dictionary_MOMP_model = MOMP_model(real_BS_ant_position, real_BS_gains, real_BS_coupling_coeff, real_MS_ant_position,
-                 subcarriers, BS_DoA, MS_DoA, delays)
-
-unfolded_MOMP_model.eval()
-real_dictionary_MOMP_model.eval()
+MOMPnet.eval()
 # --- Evaluate both models ---
 with torch.no_grad():
-    H_test_nominaldict = model_estimation(Y_test, unfolded_MOMP_model, sigma2)
-    H_test_realdict  = model_estimation(Y_test, real_dictionary_MOMP_model, sigma2)
-
+    H_val_nominaldict = model_estimation(Y_val, MOMPnet, sigma2)
     # Compute NMSEs
-    NMSE_nominal=NMSE(H_test.reshape(-1, *H_test.shape[2:]), H_test_nominaldict.reshape(-1, *H_test_nominaldict.shape[2:]))
-    NMSE_real=NMSE(H_test.reshape(-1, *H_test.shape[2:]),H_test_realdict.reshape(-1, *H_test_realdict.shape[2:]))
+    NMSE_nominal=NMSE(H_val, H_val_nominaldict)
 #%%---------------------------------------training-----------------------------------------------
-unfolded_MOMP_model.train()
-nb_epochs = 10
+MOMPnet.train()
+nb_epochs = 3
 # batch_size = 1 # batch size
-train_losses_list, valid_losses_list = [], []
-train_losses_list.append(NMSE(H_train,Y_train))
-valid_losses_list.append(NMSE(H_val,Y_val))
+train_NMSE_list, MOMPnet_NMSE_list = [], []
+with torch.no_grad():
+    # --- TRAIN ---
+    H_est_train = model_estimation(Y_train, MOMPnet, sigma2)
+    train_NMSE_list.append(NMSE(H_train,H_est_train))
+    # --- VALIDATION ---
+    H_est_val = model_estimation(Y_val, MOMPnet, sigma2)
+    MOMPnet_NMSE_list.append(NMSE(H_val,H_est_val))
 
 best_loss=torch.inf
 for i in tqdm(range(nb_epochs)):
@@ -86,66 +222,46 @@ for i in tqdm(range(nb_epochs)):
         Y_batched=Y_batched.squeeze()
         H_batched=H_batched.squeeze()
 
-        for i, p in enumerate(unfolded_MOMP_model.MS_learnable_pos_list):
+        for i, p in enumerate(MOMPnet.MS_learnable_pos_list):
             p.requires_grad_(i == user_idx)
     ################################## channel estimation #####################################################
-        # res_batched, _,_ = unfolded_MOMP_model.forward(Y_batched,sigma2)
-        res_batched=torch.stack([unfolded_MOMP_model.forward(Y_batched[p],user_idx,sigma2)[0] for p in range(len(Y_batched))], dim=0)
+
+        res_batched=torch.stack([MOMPnet.forward(Y_batched[p],user_idx,sigma2)[0] for p in range(len(Y_batched))], dim=0)
         H_est_batched=Y_batched-res_batched
         loss = torch.mean(NMSE(Y_batched,H_est_batched))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        # scheduler.step() # Update the learning rate using the scheduler
+        #scheduler.step() # Update the learning rate using the scheduler
     with torch.no_grad():
         # --- TRAIN ---
-        H_est_train = model_estimation(Y_train, unfolded_MOMP_model, sigma2)
-        train_loss = NMSE(
-            H_train.reshape(-1, *H_train.shape[2:]),
-            H_est_train.reshape(-1, *H_est_train.shape[2:])
-        )
-        train_losses_list.append(train_loss)
+        H_est_train = model_estimation(Y_train, MOMPnet, sigma2)
+        train_NMSE_list.append(NMSE(H_train,H_est_train))
 
         # --- VALIDATION ---
-        H_est_val = model_estimation(Y_val, unfolded_MOMP_model, sigma2)
-        valid_loss = NMSE(
-            H_val.reshape(-1, *H_val.shape[2:]),
-            H_est_val.reshape(-1, *H_est_val.shape[2:])
-        )
-        valid_losses_list.append(valid_loss)
+        H_est_val = model_estimation(Y_val, MOMPnet, sigma2)
+        MOMPnet_NMSE_list.append(NMSE(H_val,H_est_val))
 
         # # --- SAVE BEST --- #TODO
-        # if torch.mean(valid_loss) < best_loss:
-        #     torch.save(unfolded_MOMP_model.state_dict(),'best_momp_model.pth')
-        #     best_loss = torch.mean(valid_loss)
-        #     best_epoch = i
 
 
-    
-# %%--------------- evaluate model after training ----------------------------
-unfolded_MOMP_model.eval()
-with torch.no_grad():
-    H_test_MOMPnet = model_estimation(Y_test, unfolded_MOMP_model, sigma2)
-    # Compute NMSEs
-    NMSE_MOMP=NMSE(H_test.reshape(-1, *H_test.shape[2:]), H_test_MOMPnet.reshape(-1, *H_test_MOMPnet.shape[2:]))
 
 
 #%% Save data
 
-# Save everything together in a dictionary
-save_dict = {
-    'model_state_dict': unfolded_MOMP_model.state_dict(),
-    'NMSE0': NMSE_nominal,
-    'NMSEZ': NMSE_MOMP,
-    'NMSE_real': NMSE_real,
-    'train_losses': train_losses_list,
-    'valid_losses': valid_losses_list
-}
+## Save everything together in a dictionary
+# save_dict = {
+#     'model_state_dict': MOMPnet.state_dict(),
+#     'NMSE_nominal': NMSE_nominal,
+#     'NMSE_real': NMSE_real,
+#     'train_losses': train_NMSE_list,
+#     'valid_losses': MOMPnet_NMSE_list
+# }
 
-# Save to a file
-torch.save(save_dict, 'MOMP_model_and_metrics.pth')
+# # Save to a file
+# torch.save(save_dict, 'MOMP_model_and_metrics.pth')
 
-print("Model and lists saved successfully!")
+# print("Model and lists saved successfully!")
 
 #%%#############################################################################################################################################################################
 ##################################################################  plot evaluation ############################################################################################
@@ -153,14 +269,14 @@ print("Model and lists saved successfully!")
  
 #--------------------------------------------------Plotting learning curve------------------------------------------------------------------
 # Convert list of tensors -> average NMSE per epoch
-train_losses_avg = [t.mean().item() for t in train_losses_list]
-valid_losses_avg = [v.mean().item() for v in valid_losses_list]
+train_NMSE_avg = [t.mean().item() for t in train_NMSE_list]
+MOMPnet_NMSE_avg = [v.mean().item() for v in MOMPnet_NMSE_list]
 
-epochs = range(0, len(train_losses_avg))
+epochs = range(0, len(train_NMSE_avg))
 
 plt.figure(figsize=(8, 5))
-plt.plot(epochs, train_losses_avg, label='Train NMSE', marker='o', color='blue')
-plt.plot(epochs, valid_losses_avg, label='Validation NMSE', marker='s', color='orange')
+plt.plot(epochs, train_NMSE_avg, label='Train NMSE', marker='o', color='blue')
+plt.plot(epochs, MOMPnet_NMSE_avg, label='Validation NMSE', marker='s', color='orange')
 
 plt.gca().spines['left'].set_position('zero')
 plt.xlabel('Epoch')
@@ -171,29 +287,7 @@ plt.grid(True, linestyle='--', alpha=0.7)
 plt.legend()
 plt.tight_layout()
 plt.show()
-#%%--------------------------------------------------Plotting testing NMSE------------------------------------------------------------------
-
-# Filter and slice data
-
-nmse0=NMSE(H_test,Y_test)
-nmse1 = NMSE_nominal
-nmse2 = NMSE_MOMP
-nmse3 = NMSE_real
-
-# idx = torch.where(nmse0 < 1)
-# nmse0 = nmse_0[idx]
-# nmse1 = nmse_1[idx]
-# nmse2 = nmse_2[idx]
-# nmse3 = nmse_3[idx]
-
-# Compute means
-means = [
-    nmse0.mean().item(),
-    nmse1.mean().item(),
-    nmse2.mean().item(),
-    nmse3.mean().item()
-]
-
+#%%--------------------------------------------------Plotting validation NMSE------------------------------------------------------------------
 # Labels and colors
 labels = [
     'Observation error',
@@ -202,6 +296,21 @@ labels = [
     'MOMP with real Dicts'
 ]
 colors = [color_observation, color_nominal, color_MOMP, color_real]
+
+# bar plot for last value
+nmse_obs=NMSE(H_val,Y_val).mean().item()
+nmse_nominal = NMSE_nominal.mean().item()
+nmse_MOMPnet = MOMPnet_NMSE_avg[-1]
+nmse_real = NMSE_real.mean().item()
+
+# Compute means
+means = [
+    nmse_obs,
+    nmse_nominal,
+    nmse_MOMPnet,
+    nmse_real
+]
+
 width=0.5
 # Plot
 plt.figure(figsize=(8, 5))
@@ -215,14 +324,49 @@ plt.grid(True, which='both', linestyle='--', alpha=0.5)
 plt.tight_layout()
 plt.show()
 
-################################################################################################################################################################################
+#plot throughout training 
+
+MOMPnet_NMSE_arr=np.array(MOMPnet_NMSE_avg)
+means_arr=np.vstack([np.full_like(MOMPnet_NMSE_arr, nmse_obs),np.full_like(MOMPnet_NMSE_arr, nmse_nominal), MOMPnet_NMSE_arr,np.full_like(MOMPnet_NMSE_arr, nmse_real)])
+# NMSE means vs SNR OR vs Dataset size
+
+colors = [ color_observation,color_nominal, color_MOMP, color_real]
+markers = ['o','s','^', 'x']
+linestyles=['--','-','-','--']
+P=50
+plt.figure(figsize=(8, 5))
+
+# means_arr must have shape (5, len(nb_obs_list))
+# one row per method
+
+for i in range(len(labels)):
+    plt.plot(epochs,
+             means_arr[i],
+             color=colors[i],
+             label=labels[i],
+             marker=markers[i], linestyle=linestyles[i])
+
+# plt.yscale('log')
+ticks = epochs
+plt.xticks(ticks=ticks, labels=ticks)
+plt.xlabel(r'Number of seen channels ($10^3$)')
+plt.xlim(left=0)
+plt.ylabel('NMSE (mean)')
+plt.title('Mean NMSE vs number of seen channels')
+plt.grid(True, which='both', linestyle='--', alpha=0.5)
+plt.legend()
+plt.tight_layout()
+plt.savefig("LUC.pdf", bbox_inches="tight")
+plt.show()
+
+#%%#############################################################################################################################################################################
 ##################################################################  learned parameters #########################################################################################
 ################################################################################################################################################################################
-#%%
-learned_BS_pos=list(unfolded_MOMP_model.parameters())[0].detach().numpy()  # first parameter tensor
-learned_gains=list(unfolded_MOMP_model.parameters())[1].detach().numpy()  # 2nd parameter tensor
-learned_coupling=list(unfolded_MOMP_model.parameters())[2].detach().numpy()  # 3rd parameter tensor
-learned_MS_pos=torch.stack([p.detach() for p in unfolded_MOMP_model.MS_learnable_pos_list], 0).cpu().numpy()  # 4th parameter tensor
+
+learned_BS_pos=list(MOMPnet.parameters())[0].detach().numpy()  # first parameter tensor
+learned_gains=list(MOMPnet.parameters())[1].detach().numpy()  # 2nd parameter tensor
+learned_coupling=list(MOMPnet.parameters())[2].detach().numpy()  # 3rd parameter tensor
+learned_MS_pos=torch.stack([p.detach() for p in MOMPnet.MS_learnable_pos_list], 0).cpu().numpy()  # 4th parameter tensor
 nominal_BS_gains = np.asarray(BS_gains['nominal_BS_gains'])
 nominal_BS_coupling_coeff = np.asarray(BS_coupling['nominal_BS_coupling_coeff'],dtype=np.complex128)
 real_BS_ant_position = np.asarray(real_BS_ant_position)
