@@ -10,9 +10,8 @@ from saved_data_loader import *
 from utils.training_utils import *
 
 #%% ---------------------------------------------DATA PREPROCESSING-------------------------------------------------
-# Umax,Pmax=5,100
 # H=channels[:Umax,:Pmax] #([Umax,Pmax, 16, 8, 128])
-# Y=observations[:Umax,:Pmax] #temporarily 
+# Y=observations[SNR][:Umax,:Pmax] #temporarily 
 # #------------------------------------  normalize channels  ----------------------------------------------------------
 # H_normalized = normalize(H)
 # Y_normalized = normalize(Y)

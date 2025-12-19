@@ -354,6 +354,9 @@ D_S = FRV_Dictionary.to(dtype=torch.complex128)
 users = [0,16,44,63]
 positions = [2,8,16,50,75]
 nb_channels=len(users)*len(positions)
+SNR_av=15
+sigma2=sigma2_dict[SNR_av]
+observations=observations_dict[SNR_av]
 nmse_omp_list=[]
 nmse_momp_list=[]
 iter_max=80
@@ -364,7 +367,7 @@ for user in users:
     for p in positions:
         print(f'---------------------example {i+1}:---------------------------')
         channel = channels[user, p]
-        observation=observations[user, p]
+        observation=observations_dict[user, p]
         D_M = real_MS_Dictionaries[user]
 
         # start_omp = time.time()
@@ -457,7 +460,7 @@ nmse_animation(nmse_momp_,nmse_momp_refine,logscale=True,labels=['MOMP NO refine
 #%% BATCHED MOMP
 users = 0
 H = channels[user]
-Y=observations[user]
+Y=observations_dict[user]
 sigma2_est=sigma2
 iter_max=50
 D_M = real_MS_Dictionaries[user]

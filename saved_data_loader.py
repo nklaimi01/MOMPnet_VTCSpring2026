@@ -67,9 +67,15 @@ BS_coupling = np.load(save_dir/'BS_coupling.npz')
 nominal_BS_coupling_coeff = torch.tensor(BS_coupling['nominal_BS_coupling_coeff'], device=device, dtype=torch.complex128)
 real_BS_coupling_coeff = torch.tensor(BS_coupling['real_BS_coupling_coeff'], device=device, dtype=torch.complex128)
 #load observations
-observations_dict = np.load(save_dir/'Observations.npz')
-observations = torch.from_numpy(observations_dict['observations']).to(device)
-sigma2 = torch.from_numpy(observations_dict['sigma2']).to(device)
+SNR_av_list = [0, 5, 15]
+
+observations_dict = {}
+sigma2_dict = {}
+
+for snr in SNR_av_list:
+    data = np.load(save_dir / f'observations_{snr}.npz')
+    observations_dict[snr] = torch.from_numpy(data['observations']).to(device)
+    sigma2_dict[snr] = torch.from_numpy(data['sigma2']).to(device)
 
 ########################## Dictionaries #################################
 # SV dictionary For BS antennas

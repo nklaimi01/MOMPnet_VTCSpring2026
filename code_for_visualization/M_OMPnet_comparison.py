@@ -23,13 +23,14 @@ from models.MOMP_model import MOMP_model
 from models.OMP_model import OMP_3D_model
 from utils.training_utils import *
 
-SNR_average=10*torch.log10(torch.mean(torch.sum(torch.abs(channels)**2, axis=(2, 3, 4))) / (16*8*128 * sigma2))
-print(f'average SNR={SNR_average}')
+SNR_av=15
+print(f'average SNR={SNR_av}')
 
 #DATA
-Umax,Pmax=5,10
-H=channels[:Umax,:Pmax] #([Umax,Pmax, 16, 8, 128])
-Y=observations[:Umax,:Pmax] #temporarily 
+Umax_OMP,Pmax_OMP=5,10
+
+H=channels[:Umax_OMP,:Pmax_OMP] #([Umax,Pmax, 16, 8, 128])
+Y=observations_dict[SNR_av][:Umax_OMP,:Pmax_OMP] #temporarily 
 #------------------------------------  normalize channels  ----------------------------------------------------------
 H_normalized = normalize(H)
 Y_normalized = normalize(Y)
@@ -40,16 +41,16 @@ tt_split_index=int(H_normalized.shape[1] * train_test_ratio)
 # test data 
 H_test=H_normalized[:,tt_split_index:].to(device)
 Y_test=Y_normalized[:,tt_split_index:].to(device)
-users_position_test=users_position[:Umax,tt_split_index:].to(device)
+users_position_test=users_position[:Umax_OMP,tt_split_index:].to(device)
 
-if Umax>1:
+if Umax_OMP>1:
     nb_test_positions=Y_test.shape[1]
 else:
-    nb_test_positions=Pmax
+    nb_test_positions=Pmax_OMP
 
 # LOAD TRAINED MODELS
 ############################ MOMP ############################
-nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(Umax)], dim=0)
+nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(Umax_OMP)], dim=0)
 unfolded_MOMP_model = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
 
@@ -60,7 +61,7 @@ unfolded_MOMP_model.load_state_dict(checkpoint['model_state_dict'])
 # Load the lists
 NMSE_nominal_MOMP = checkpoint['NMSE0']
 NMSE_MOMP = checkpoint['NMSEZ']
-# NMSE_real_MOMP = checkpoint['NMSE_real']
+NMSE_real_MOMP = checkpoint['NMSE_real']
 train_losses_MOMP = checkpoint['train_losses']
 valid_losses_MOMP = checkpoint['valid_losses']
 #%%

@@ -23,6 +23,9 @@ os.chdir(project_root)
 sys.path.append(str(project_root))
 from utils.data_gen_utils import init_scene_ULA,generate_observations
 
+np.random.seed(0)
+  # any integer you like
+
 nb_BS_antennas=16
 nb_MS_antennas=8
 nb_subcarriers=128
@@ -35,9 +38,6 @@ nominal_subcarriers = f0 + np.arange(nb_subcarriers) * delta_f
 i_sc=np.arange(nb_subcarriers)
 z = 40 #ppm oscillator inaccuracy 
 real_subcarriers = nominal_subcarriers +i_sc*z*delta_f
-sigma_p=0.2
-sigma_g=0.4
-coupling_strength=0.4
 path_init = Path.cwd()/'.saved_data'
 save_dir=path_init/'visual' 
 save_dir_noimp=path_init/'visual/no_impairments' #!/if no impairments'
@@ -139,7 +139,7 @@ def angle_delay_map(channel,angles_dict,delays_dict):
     
     return angle_delay_map
 
-def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom=None,show_range=False,dB=True,show_max=False):
+def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom=None,show_range=False,dB=True,show_max=False,colors=['GnBu','red'],titles=['No imperfections','Assuming No imperfections'],save=None,fontsize=16):
     '''
     user=[dx,dy,dz] user's relative position w/ respect to the BS
     zoom=[tau_min, tau_max, phi_min, phi_max] / delays (tau) in [us] and angles (phi) in [deg]
@@ -197,47 +197,50 @@ def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom
                          aspect='auto',
                          extent=extent,
                          origin='lower',
+                         cmap=colors[0],
                          vmin=vmin, vmax=vmax)
-    axes[0].set_title("Full BS Imperfection Knowledge")
-    axes[0].set_xlabel("Delay [µs]")
-    axes[0].set_ylabel("Angle [deg]")
+    axes[0].set_title(titles[0])
+    axes[0].set_ylabel("Angle [deg]",fontsize=fontsize)
 
     # Second subplot
     im2 = axes[1].imshow(nominal_ADM,
                          aspect='auto',
                          extent=extent,
                          origin='lower',
+                         cmap=colors[0],
                          vmin=vmin, vmax=vmax)
-    axes[1].set_title("Assuming No Imperfections")
-    axes[1].set_xlabel("Delay [µs]")
-    axes[1].set_ylabel("Angle [deg]")
+    axes[1].set_title(titles[1])
+
+    # axes[1].set_ylabel("Angle [deg]")
 
     # Shared colorbar
     cbar = fig.colorbar(im1, ax=axes, fraction=0.046, pad=0.04)
-    cbar.set_label("[dB]" if dB else "")
-    fig.suptitle("Angle-Delay Maps", fontsize=14)
+    cbar.set_label("[dB]" if dB else "",fontsize=fontsize)
 
     # Fix y-ticks: show cos(angle) but label in degrees
     yticks_cos = np.cos(np.deg2rad(yticks_deg))
+    axes[0].set_yticks(yticks_cos)
+    axes[0].set_yticklabels([f"{d:.0f}°" for d in yticks_deg],fontsize=fontsize)
+    axes[1].tick_params(axis='y', left=False, labelleft=False)
     for ax in axes:
-        ax.set_yticks(yticks_cos)
-        ax.set_yticklabels([f"{d:.0f}°" for d in yticks_deg])
         if show_range:
-            ax.set_xticklabels([f"{d:.1f}" for d in xticks_m])
-            ax.set_xlabel("Range [m]")
-            fig.suptitle("Angle-Range Maps", fontsize=14)
+            ax.set_xticklabels([f"{d:.1f}" for d in xticks_m],fontsize=fontsize)
+            ax.set_xlabel("Range [m]",fontsize=fontsize)
+        else:
+            ax.set_xlabel("Delay [µs]",fontsize=fontsize)
+
 
     if show_max:  
         # find maximum of the correlation matrix
         r_angle_idx,r_delay_idx = np.unravel_index(np.argmax(real_ADM) , real_ADM.shape)  # (BS_angle_idx, delay_idx)
         r_max_cos_angle=cos_angles[r_angle_idx]
         r_max_delay_us=delays_us[r_delay_idx]
-        axes[0].scatter(r_max_delay_us, r_max_cos_angle, color='blue', marker='s', s=100, label='Maximum')
+        axes[0].scatter(r_max_delay_us, r_max_cos_angle, color='blue', marker='^', s=100, label='Maximum')
 
         n_angle_idx,n_delay_idx = np.unravel_index(np.argmax(nominal_ADM), nominal_ADM.shape)  # (BS_angle_idx, delay_idx)
         n_max_cos_angle=cos_angles[n_angle_idx]
         n_max_delay_us=delays_us[n_delay_idx]
-        axes[1].scatter(n_max_delay_us, n_max_cos_angle, color='blue', marker='s', s=100, label='Maximum')
+        axes[1].scatter(n_max_delay_us, n_max_cos_angle, color='blue', marker='^', s=100, label='Maximum')
 
     # Optional: mark user
     if user is not None:
@@ -246,9 +249,12 @@ def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom
         user_delay_us = np.sqrt(dx**2 + dy**2 + dz**2) / 3e8 * 1e6
         user_cos = np.cos(user_angle_rd)
 
-        axes[0].scatter(user_delay_us, user_cos, color='red', marker='x', s=100, label='User')
-        axes[1].scatter(user_delay_us, user_cos, color='red', marker='x', s=100, label='User')
-
+        axes[0].scatter(user_delay_us, user_cos, color=colors[1], marker='s', s=80)
+        axes[1].scatter(user_delay_us, user_cos, color=colors[1], marker='s', s=80)
+        plt.scatter([],[],color=colors[1], marker='s', s=80,label='true user position')
+    
+    fig.legend(fontsize=fontsize,loc="upper center")
+    if save is not None: fig.savefig(f"{save}.pdf")
     plt.show()
 
 def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=True, user=None,save=None):
@@ -340,9 +346,6 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
         ax_main.scatter(delays_us[r_delay_idx], cos_angles[r_angle_idx], color='magenta', marker='v', s=80, label='OMP Maximum correlation')
         # find maximum of the correlation matrix
         ax_main.scatter(delays_us[top_marginal.argmax()], cos_angles[right_marginal.argmax()], color='orange', marker='^', s=80, label='MOMP Maximum correlation')
-
-
-
 
     # Optional: mark user
     if user is not None:
@@ -479,9 +482,11 @@ nominal_angle_delay_map=angle_delay_map(Y,nominal_BS_Dictionary,nominal_FRV_Dict
 noimp_angle_delay_map=angle_delay_map(Y_noimp,nominal_BS_Dictionary,nominal_FRV_Dictionary)
 
 #%%
-
+p=0
 # for p in range(real_angle_delay_map.shape[0]):
-#     subplot_ADM(p,real_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=True)
+# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['viridis','red'])
+# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['jet','mediumpurple'])
+subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['rainbow','black'],save='ADM',titles=['',''])
 
 # plt.figure()
 # corr=np.abs(np.conj(FRV_Dictionary).T@FRV_Dictionary)

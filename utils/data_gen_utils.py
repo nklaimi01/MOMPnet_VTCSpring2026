@@ -277,6 +277,6 @@ def generate_observations(save_dir,H,SNR_avg_dB):
     # Save to .npz if directory is specified
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
-        np.savez(os.path.join(save_dir, "observations.npz"), **observations_dict)
+        np.savez(os.path.join(save_dir, f"observations_{SNR_avg_dB}.npz"), **observations_dict)
 
     return observations, sigma2

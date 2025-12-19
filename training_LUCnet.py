@@ -4,6 +4,7 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 from models.OMP_model import OMP_1D_model,OMP_uncnstrd_model
+from models.MP_model import MP_1D_model
 from utils.dictionary_gen_utils import *
 import matplotlib.pyplot as plt
 from saved_data_loader import *
@@ -30,8 +31,8 @@ noise = torch.sqrt(sigma2 / 2) * (torch.randn(*H.shape) + 1j * torch.randn(*H.sh
 Y = H + noise
 H = normalize(H)
 Y = normalize(Y)
-Hm_test=H[-1000:]
-Ym_test=Y[-1000:]
+H_test=H[-1000:]
+Y_test=Y[-1000:]
 
 #train data
 train_valid_ratio = 0.8
@@ -44,17 +45,20 @@ Y_val     = Y[tv_split_index:].to(device)
 
 #--------------------------- evaluate model BEFORE training and model with real dictionary----------------------------------
 iter_max=4
-H_test_nominaldict = Ym_test - OMP(Ym_test,nominal_BS_Dictionary, iter_max=iter_max)[0] #Y-r
-H_test_realdict = Ym_test - OMP(Ym_test,real_BS_Dictionary, iter_max=iter_max)[0]
+H_test_nominaldict = Y_test - OMP(Y_test,nominal_BS_Dictionary, iter_max=iter_max)[0] #Y-r
+H_test_realdict = Y_test - OMP(Y_test,real_BS_Dictionary, iter_max=iter_max)[0]
 # Compute NMSEs
-NMSE_nominal=NMSE(Hm_test, H_test_nominaldict)
-NMSE_real=NMSE(Hm_test,H_test_realdict)
-#%%
-# ----------------------------------- Deep unfolding ------------------------------------------
+NMSE_nominal=NMSE(H_test, H_test_nominaldict)
+NMSE_real=NMSE(H_test,H_test_realdict)
+
+###########################################################################################################################################
+
+#%% ---------------------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------  OMPnet  -------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------------------------------------------
 # parameters defining
 # model defining
 OMPnet = OMP_1D_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, BS_DoA)
-
 optimizer = torch.optim.Adam([
     {'params': OMPnet.learnable_ant_pos_y, 'lr':1e-4},
     {'params': OMPnet.ant_gains, 'lr':1e-2},
@@ -67,26 +71,26 @@ NMSE_OMPnet_list=[]
 train_losses_list, valid_losses_list = [], []
 OMPnet.eval()
 with torch.no_grad():
-    H_test_MOMPnet = Ym_test - OMPnet(Ym_test,iter_max=iter_max)[0]
-    NMSE_OMPnet_list.append(NMSE(Hm_test, H_test_MOMPnet).mean().item())
+    H_test_OMPnet = Y_test - OMPnet(Y_test,iter_max=iter_max)[0]
+    NMSE_OMPnet_list.append(NMSE(H_test, H_test_OMPnet).mean().item())
     train_losses_list.append(NMSE(H_train,Y_train - OMPnet(Y_train,iter_max=iter_max)[0]))
     valid_losses_list.append(NMSE(H_val,Y_val - OMPnet(Y_val,iter_max=iter_max)[0]))
-#%%
 #---------------------------------------training-----------------------------------------------
 OMPnet.train()
 # batch_size = 1 # batch size
 batch_size = 100
 train_size = Y_train.shape[0]
 for i in tqdm(range(0, train_size, batch_size)):
+    optimizer.zero_grad()
     Y_batched =   Y_train[i:i + batch_size].to(device)
     H_batched  =   H_train[i:i + batch_size].to(device)
     Y_batched=Y_batched.squeeze()
     H_batched=H_batched.squeeze()
-    ################################## channel estimation #####################################################
+
     res_batched=OMPnet(Y_batched,iter_max=iter_max)[0]
     H_est_batched=Y_batched-res_batched
     loss = torch.mean(NMSE(Y_batched,H_est_batched))
-    optimizer.zero_grad()
+    
     loss.backward()
     optimizer.step()
     # scheduler.step() # Update the learning rate using the scheduler
@@ -102,68 +106,129 @@ for i in tqdm(range(0, train_size, batch_size)):
     #--------------- evaluate model after training ----------------------------
     OMPnet.eval()
     with torch.no_grad():
-        H_test_MOMPnet = Ym_test - OMPnet(Ym_test,iter_max=iter_max)[0]
+        H_test_OMPnet = Y_test - OMPnet(Y_test,iter_max=iter_max)[0]
         # Compute NMSEs
-        NMSE_OMPnet_list.append(NMSE(Hm_test, H_test_MOMPnet).mean().item())
+        NMSE_OMPnet_list.append(NMSE(H_test, H_test_OMPnet).mean().item())
 nmse_OMPnet=np.array(NMSE_OMPnet_list)
 
-
-#%% ------------------------------------------------ ML: unconstrained OMPnet generated randomly --------------------------------------------------------------------------------
+#%% ---------------------------------------------------------------------------------------------------------------------------------------
+#------------------------------------- ML: unconstrained OMPnet generated randomly --------------------------------------------------------
+#------------------------------------------------------------------------------------------------------------------------------------------
 D0 = torch.randn(nominal_BS_Dictionary.shape, dtype=nominal_BS_Dictionary.dtype)
 D0=D0/torch.norm(D0, dim=0, keepdim=True)
 #%%
-ML_OMPnet = OMP_uncnstrd_model(D0.clone())
-optimizer = torch.optim.Adam(ML_OMPnet.parameters(), lr=1e-2)
+MLnet = OMP_uncnstrd_model(D0.clone())
+optimizer = torch.optim.Adam(MLnet.parameters(), lr=1e-2)
 # scheduler= torch.optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.7)   
 
 #---------------------------------------eval before training-----------------------------------------------
 NMSE_MLnet_list=[] 
 ML_train_losses_list, ML_valid_losses_list = [], []
-ML_OMPnet.eval()
+MLnet.eval()
 with torch.no_grad():
-    H_test_MLnet = Ym_test - ML_OMPnet(Ym_test,iter_max=iter_max)[0]
+    H_test_MLnet = Y_test - MLnet(Y_test,iter_max=iter_max)[0]
     # Compute NMSEs
-    NMSE_MLnet_list.append(NMSE(Hm_test, H_test_MLnet).mean().item())
-    ML_train_losses_list.append(NMSE(H_train,Y_train - ML_OMPnet(Y_train,iter_max=iter_max)[0]))
-    ML_valid_losses_list.append(NMSE(H_val,Y_val - ML_OMPnet(Y_val,iter_max=iter_max)[0]))
+    NMSE_MLnet_list.append(NMSE(H_test, H_test_MLnet).mean().item())
+    ML_train_losses_list.append(NMSE(H_train,Y_train - MLnet(Y_train,iter_max=iter_max)[0]))
+    ML_valid_losses_list.append(NMSE(H_val,Y_val - MLnet(Y_val,iter_max=iter_max)[0]))
 #---------------------------------------training-----------------------------------------------
-ML_OMPnet.train()
+MLnet.train()
 # batch_size = 1 # batch size
 batch_size = 100
 train_size = Y_train.shape[0]
 for i in tqdm(range(0, train_size, batch_size)):
+    optimizer.zero_grad()
     Y_batched =   Y_train[i:i + batch_size].to(device)
     H_batched  =   H_train[i:i + batch_size].to(device)
     Y_batched=Y_batched.squeeze()
     H_batched=H_batched.squeeze()
-    ################################## channel estimation #####################################################
-    res_batched=ML_OMPnet(Y_batched,iter_max=iter_max)[0]
+
+    res_batched=MLnet(Y_batched,iter_max=iter_max)[0]
     H_est_batched=Y_batched-res_batched
     loss = torch.mean(NMSE(Y_batched,H_est_batched))
-    optimizer.zero_grad()
     loss.backward()
     optimizer.step()
     # scheduler.step() # Update the learning rate using the scheduler
     with torch.no_grad():
         # --- TRAIN ---
-        H_est_train = Y_train - ML_OMPnet(Y_train,iter_max=iter_max)[0] # Y - r
+        H_est_train = Y_train - MLnet(Y_train,iter_max=iter_max)[0] # Y - r
         train_loss = NMSE(H_train,H_est_train)
         ML_train_losses_list.append(train_loss)
         # --- VALIDATION ---
-        H_est_val = Y_val - ML_OMPnet(Y_val,iter_max=iter_max)[0]
+        H_est_val = Y_val - MLnet(Y_val,iter_max=iter_max)[0]
         valid_loss = NMSE(H_val, H_est_val)
         ML_valid_losses_list.append(valid_loss)
     #--------------- evaluate model after training ----------------------------
-    ML_OMPnet.eval()
+    MLnet.eval()
     with torch.no_grad():
-        H_test_MLnet = Ym_test - ML_OMPnet(Ym_test,iter_max=iter_max)[0]
+        H_test_MLnet = Y_test - MLnet(Y_test,iter_max=iter_max)[0]
         # Compute NMSEs
-        NMSE_MLnet_list.append(NMSE(Hm_test, H_test_MLnet).mean().item())
+        NMSE_MLnet_list.append(NMSE(H_test, H_test_MLnet).mean().item())
 nmse_MLnet=np.array(NMSE_MLnet_list)
 
 
+
+#%% ---------------------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------  MPnet  --------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+MPnet = MP_1D_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, BS_DoA)
+# parameters defining
+# model defining
+optimizer = torch.optim.Adam([
+    {'params': MPnet.learnable_ant_pos_y, 'lr':1e-2},
+    {'params': MPnet.ant_gains, 'lr':1e-2},
+    {'params': MPnet.coupling_coeff, 'lr':1e-2},
+])
+# scheduler= torch.optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.7)   
+
+#---------------------------------------eval before training-----------------------------------------------
+NMSE_MPnet_list=[] 
+train_losses_list, valid_losses_list = [], []
+MPnet.eval()
+with torch.no_grad():
+    H_test_MPnet = Y_test - MPnet(Y_test,iter_max=iter_max)[0]
+    NMSE_MPnet_list.append(NMSE(H_test, H_test_MPnet).mean().item())
+    train_losses_list.append(NMSE(H_train,Y_train - MPnet(Y_train,iter_max=iter_max)[0]))
+    valid_losses_list.append(NMSE(H_val,Y_val - MPnet(Y_val,iter_max=iter_max)[0]))
+#---------------------------------------training-----------------------------------------------------------
+MPnet.train()
+# batch_size = 1 # batch size
+batch_size = 100
+train_size = Y_train.shape[0]
+for i in tqdm(range(0, train_size, batch_size)):
+    optimizer.zero_grad()
+    Y_batched =   Y_train[i:i + batch_size].to(device)
+    H_batched  =   H_train[i:i + batch_size].to(device)
+    Y_batched=Y_batched.squeeze()
+    H_batched=H_batched.squeeze()
+
+    res_batched=MPnet(Y_batched,iter_max=iter_max)[0]
+    H_est_batched=Y_batched-res_batched
+    loss = torch.mean(NMSE(Y_batched,H_est_batched))
+    
+    loss.backward()
+    optimizer.step()
+    # scheduler.step() # Update the learning rate using the scheduler
+    with torch.no_grad():
+        # --- TRAIN ---
+        H_est_train = Y_train - MPnet(Y_train,iter_max=iter_max)[0] # Y - r
+        train_loss = NMSE(H_train,H_est_train)
+        train_losses_list.append(train_loss)
+        # --- VALIDATION ---
+        H_est_val = Y_val - MPnet(Y_val,iter_max=iter_max)[0]
+        valid_loss = NMSE(H_val, H_est_val)
+        valid_losses_list.append(valid_loss)
+    #--------------- evaluate model after training ----------------------------
+    MPnet.eval()
+    with torch.no_grad():
+        H_test_MPnet = Y_test - MPnet(Y_test,iter_max=iter_max)[0]
+        # Compute NMSEs
+        NMSE_MPnet_list.append(NMSE(H_test, H_test_MPnet).mean().item())
+nmse_MPnet=np.array(NMSE_MPnet_list)
+
 #%%--------------------------------------------------Plot NMSE on testing channels vs nb of seen channels: ------------------------------------------------------------------
-nmse_obs=NMSE(Hm_test,Ym_test).mean().item()
+nmse_obs=NMSE(H_test,Y_test).mean().item()
 nmse_nominal = NMSE_nominal.mean().item()
 nmse_real = NMSE_real.mean().item()
 
@@ -202,10 +267,50 @@ plt.title('Mean NMSE vs number of seen channels')
 plt.grid(True, which='both', linestyle='--', alpha=0.5)
 plt.legend()
 plt.tight_layout()
-plt.savefig("LUC.pdf", bbox_inches="tight")
+# plt.savefig("LUC.pdf", bbox_inches="tight")
 plt.show()
 
+#%%-------------------------------------------------- MPnet vs OMPnet ------------------------------------------------------------------
+nmse_obs=NMSE(H_test,Y_test).mean().item()
+nmse_nominal = NMSE_nominal.mean().item()
+nmse_real = NMSE_real.mean().item()
 
+means_arr=np.vstack([np.full_like(nmse_OMPnet, nmse_nominal),nmse_MPnet, nmse_OMPnet,np.full_like(nmse_OMPnet, nmse_real)])
+# NMSE means vs SNR OR vs Dataset size
+labels = [
+    # 'Observation',
+    'OMP nominal Dict',
+    'MPnet',
+    'OMPnet',
+    'OMP real Dict'
+]
+colors = [ color_nominal,'orange', 'blue' , color_real]
+markers = ['o','s','^', 'x']
+linestyles=['--','-','-','--']
+P=50
+plt.figure(figsize=(8, 5))
+
+# means_arr must have shape (5, len(nb_obs_list))
+# one row per method
+nb_seen_channels=np.arange(0, train_size+batch_size, batch_size)
+for i in range(len(labels)):
+    plt.plot(nb_seen_channels,
+             means_arr[i],
+             color=colors[i],
+             label=labels[i], markevery=P,
+             marker=markers[i], linestyle=linestyles[i])
+
+# plt.yscale('log')
+ticks = nb_seen_channels[::P]
+plt.xticks(ticks=ticks, labels=(ticks/1e3).astype(int))
+plt.xlabel(r'Number of seen channels ($10^3$)')
+plt.xlim(left=0)
+plt.ylabel('NMSE (mean)')
+plt.title('Mean NMSE vs number of seen channels')
+plt.grid(True, which='both', linestyle='--', alpha=0.5)
+plt.legend()
+plt.tight_layout()
+plt.show()
 #%%#############################################################################################################################################################################
 ##################################################################  evaluation #################################################################################################
 ################################################################################################################################################################################

@@ -10,10 +10,10 @@ from saved_data_loader import *
 from utils.training_utils import *
 
 #%%--------------------------------------- preprocessing ------------------------------------------------------------
-Umax,Pmax=5,10
-
-H=channels[:Umax,:Pmax] #temporarily 
-Y=observations[:Umax,:Pmax] #temporarily 
+Umax_OMP,Pmax_OMP=5,10
+SNR_av=15 #dB
+H=channels[:Umax_OMP,:Pmax_OMP] #temporarily 
+Y=observations_dict[SNR_av][:Umax_OMP,:Pmax_OMP] #temporarily 
 nb_users=H.shape[0]
 #------------------------------------  normalize channels  ----------------------------------------------------------
 H_normalized = normalize(H)
@@ -302,7 +302,7 @@ plt.show()
 #%%
 ####################################### plot learned MS postions #############################################
 MS_pos_error=[]
-for u in range(Umax):
+for u in range(Umax_OMP):
     # --- Calcul des erreurs quadratiques ---
     err_nominal = np.sum(np.abs(real_MS_ant_position[u,:, 1] - nominal_MS_ant_position[:, 1])**2)
     err_learned_OMP = np.sum(np.abs(real_MS_ant_position[u,:, 1] - learned_MS_pos[u])**2)
@@ -313,7 +313,7 @@ for u in range(Umax):
 
 #%%
 # --- X and Y coordinates ---
-for u in range(Umax):
+for u in range(Umax_OMP):
     x = real_MS_ant_position[0, :, 0]
     y_nominal = nominal_MS_ant_position[:, 1]
     y_real = real_MS_ant_position[u, :, 1]

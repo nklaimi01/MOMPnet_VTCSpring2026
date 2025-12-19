@@ -74,6 +74,149 @@ def model_estimation(Y, model, sigma2_est):
                     H_est[u, p] = y - res
             return H_est
 
+def MOMP(Y,D1,D2,D3, sigma2_est, iter_max=30, refine_iter=2):
+        """
+        Performs MOMP to approximate
+        the channel H using dictionaries D1, D2, and D3.
+
+        Parameters
+        ----------
+        H : torch.Tensor
+            Observed channel tensor to be approximated.
+        sigma2_est : float
+            Estimated noise variance for the stopping criterion.
+        iter_max : int, optional
+            Maximum number of iterations (default: 30).
+        refine_iter : int, optional
+            Number of refinement steps to improve atom selection (default: 2).
+
+        Returns
+        -------
+        r : torch.Tensor
+            Final residual tensor after MOMP iterations.
+        I : torch.Tensor
+            Indices of selected atoms [i1, i2, i3] at each iteration.
+        x : torch.Tensor
+            Coefficients corresponding to the selected atoms.
+
+        """
+        D1 = D1.to(dtype=torch.complex128)
+        D2 = D2.to(dtype=torch.complex128)
+        D3 = D3.to(dtype=torch.complex128)
+
+        # --------------------------------------------------------------------------
+        # Initialization
+        # --------------------------------------------------------------------------
+        N = Y.numel()              # Total number of elements in H
+        stop = False
+        iter = 0
+        I_list = []                # List of selected index triplets per iteration
+        h_reshaped = Y.reshape(-1) # Flattened channel tensor
+        D_I_list = []              # List of selected atoms
+        r = Y                      # Initialize residual with input tensor
+
+        # --------------------------------------------------------------------------
+        # Main MOMP iteration loop
+        # --------------------------------------------------------------------------
+        while not stop:
+            # Step 1: Compute correlations with D1 along the first dimension
+            corr1 = torch.einsum('ab,bms->ams', torch.conj(D1).T, r)
+            i1 = torch.argmax((corr1.abs()**2).sum(dim=(1, 2)))
+
+            # Step 2: Select best atom from D2 using the previous selection from D1
+            corr2 = torch.conj(D2).T @ corr1[i1]
+            i2 = torch.argmax((corr2.abs()**2).sum(dim=1))
+
+            # Step 3: Select best atom from D3 using the previous selections
+            corr3 = torch.conj(D3).T @ corr2[i2]
+            i3 = torch.argmax(torch.abs(corr3)**2)
+
+            # ----------------------------------------------------------------------
+            # Optional refinement of atom indices via local coordinate updates
+            # ----------------------------------------------------------------------
+            if refine_iter is not None:
+                atom = [i1, i2, i3]
+                D = [D1, D2, D3]
+
+                for _ in range(refine_iter):
+                    for d in range(len(atom)):
+                        # Identify the two remaining dimensions besides d
+                        other_idx1, other_idx2 = (set(range(len(atom))) - {d})
+
+                        # Extract the selected atoms along the other dimensions
+                        vec_0 = D[other_idx1][:, atom[other_idx1]]
+                        vec_1 = D[other_idx2][:, atom[other_idx2]]
+
+                        # Permute residual to align dimensions [other1, other2, d]
+                        r_permuted = r.permute(other_idx1, other_idx2, d)
+
+                        # Compute correlation along dimension d
+                        corr_d = torch.einsum('a,abc,b->c', torch.conj(vec_0), r_permuted, torch.conj(vec_1))
+                        corr_d = torch.matmul(torch.conj(D[d]).T, corr_d)
+
+                        # Update atom index along dimension d with the highest correlation
+                        i_d = torch.argmax(torch.abs(corr_d)**2)
+                        atom[d] = i_d
+
+                # Update selected indices after refinement
+                i1, i2, i3 = atom
+
+            # Store current triplet of selected atom indices
+            I_list.append(torch.tensor([i1, i2, i3]))
+
+            # ----------------------------------------------------------------------
+            # Construct current dictionary from selected atoms (Kronecker structure)
+            # ----------------------------------------------------------------------
+            vec1 = D1[:, i1]
+            vec2 = D2[:, i2]
+            vec3 = D3[:, i3]
+            D_I_list.append(torch.kron(torch.kron(vec1, vec2), vec3))
+            D_I = torch.stack(D_I_list, 1)
+
+            # ----------------------------------------------------------------------
+            # Solve least squares problem to estimate coefficients
+            # ----------------------------------------------------------------------
+            x = torch.linalg.lstsq(D_I, h_reshaped).solution
+            proj_h = D_I @ x
+
+            # ----------------------------------------------------------------------
+            # Update residual and iteration counter
+            # ----------------------------------------------------------------------
+            r_reshaped = h_reshaped - proj_h
+            r = r_reshaped.reshape(Y.shape)
+            iter += 1
+
+            # ----------------------------------------------------------------------
+            # Check stopping criteria: residual energy or iteration limit
+            # ----------------------------------------------------------------------
+            if sigma2_est is None:
+                SC=False
+            else:
+                SC=torch.sum(torch.abs(r)**2) <= N * sigma2_est
+
+            if  SC or iter > iter_max - 1:
+                stop = True
+
+        # Stack selected atom indices across all iterations
+        I = torch.stack(I_list, 0)
+
+        return r, I, x
+
+def MOMP_estimation(Y, D1, D2, D3, sigma2_est):
+            H_est = torch.zeros_like(Y)
+            for u in range(Y.shape[0]):
+                if D2.dim()==2:
+                    D2u=D2
+                else:
+                    D2u=D2[u]
+                for p in range(Y.shape[1]):
+                    y = Y[u, p]
+                    y = y.squeeze()
+                    res, _, _ = MOMP(y,D1,D2u,D3, sigma2_est)
+                    H_est[u, p] = y - res
+            return H_est
+
+
 def plot_antennas_with_parameters(
     ax, positions_y, gains, coupling_c1, color="C0", label=None,
     positions_scale=0.8,mag_scale=1.2, coupling_line_scale=1.0,
@@ -152,7 +295,7 @@ def plot_antennas_with_parameters(
 
 
 def plot_multiple_parameter_sets(
-    list_of_positions, list_of_gains, list_of_c1,colors=None, labels=None, y_spacing=2.0,positions_scale=0.8,mag_scale=1.2, figsize=(10,6)
+    list_of_positions, list_of_gains, list_of_c1,colors=None, labels=None, y_spacing=2.0,positions_scale=0.8,mag_scale=1.2, figsize=(10,6),c1_legend=True
 ):
     """Plot multiple parameter sets with vertical offset."""
     assert len(list_of_positions) == len(list_of_gains) == len(list_of_c1) 
@@ -178,7 +321,8 @@ def plot_multiple_parameter_sets(
     ax.set_xticklabels(range(16))
     ax.set_yticklabels([])
     ax.set_title("BS Antenna parameters")
-    ax.plot([],[],color='k',label='mutual coupling')
+    if c1_legend:
+        ax.plot([],[],color='k',label='mutual coupling')
 
 
     if labels is not None:
