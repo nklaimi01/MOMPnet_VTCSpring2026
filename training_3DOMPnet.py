@@ -8,10 +8,13 @@ from utils.dictionary_gen_utils import *
 import matplotlib.pyplot as plt
 from saved_data_loader import *
 from utils.training_utils import *
+from utils.plot_utils import plot_multiple_parameter_sets
 
 #%%--------------------------------------- preprocessing ------------------------------------------------------------
 Umax_OMP,Pmax_OMP=5,10
 SNR_av=15 #dB
+print(f"average SNR={SNR_av}")
+sigma2=sigma2_dict[SNR_av]
 H=channels[:Umax_OMP,:Pmax_OMP] #temporarily 
 Y=observations_dict[SNR_av][:Umax_OMP,:Pmax_OMP] #temporarily 
 nb_users=H.shape[0]

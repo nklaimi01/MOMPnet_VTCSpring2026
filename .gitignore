@@ -20,6 +20,7 @@ dist/
 Thumbs.db
 
 .saved_data
+figures
 *.npz
 *.pdf
 *.mp4

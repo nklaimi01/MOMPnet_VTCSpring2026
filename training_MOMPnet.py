@@ -18,7 +18,7 @@ def ticklabels_array(highest_int, spacing):
 #--------------------------------------- preprocessing ------------------------------------------------------------
 Umax=10
 Pmax=150
-SNR_av=0
+SNR_av=5
 print(f"average SNR={SNR_av}")
 sigma2=sigma2_dict[SNR_av]
 H=channels[:Umax,:Pmax] #dataset size
@@ -43,6 +43,7 @@ NMSE_real=NMSE(H_val,H_val_realdict)
 
 H_val_nominaldict=MOMP_estimation(Y_val,nominal_BS_Dictionary,nominal_MS_Dictionary,FRV_Dictionary,sigma2)
 NMSE_nominal=NMSE(H_val,H_val_nominaldict)
+
 # ----------------------------------- Deep unfolding ------------------------------------------
 # parameters defining
 # model defining
@@ -117,7 +118,7 @@ for epoch in epoch_bar:
         'MOMPnet_NMSE': MOMPnet_NMSE_list
     }
     # Save to a file
-    torch.save(save_dict, f'MOMPnet_{SNR_av}_dB.pth')
+    torch.save(save_dict, f'MOMPnet_{SNR_av}_dB_new.pth')
 
 #Save data
 save_dict = {
@@ -128,5 +129,5 @@ save_dict = {
     'real_NMSE': NMSE_real
 }
 # Save to a file
-torch.save(save_dict, f'MOMPnet_{SNR_av}_dB.pth')
+torch.save(save_dict, f'MOMPnet_{SNR_av}_dB_new.pth')
 print("Model saved!")

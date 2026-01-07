@@ -23,6 +23,7 @@ from saved_data_loader import *
 from utils.training_utils import *
 import matplotlib.patches as patches
 from matplotlib.colors import LinearSegmentedColormap
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 def loc(Y,D1,D2,D3=None):
     # Step 1: Compute correlations with D1 along the first dimension
@@ -37,19 +38,30 @@ def loc(Y,D1,D2,D3=None):
     # i3 = torch.argmax(torch.abs(corr3)**2)
     return i1,i2
 
-def rde(true_delay_us,true_AoA,est_delay_us,est_AoA):
-    est_AoA = np.array(est_AoA_list)
-    est_delay_us = np.array(est_delay_list)
-    true_d=true_delay_us*c*1e-6 #us -> m
-    est_d=est_delay_us*c*1e-6
-    return np.sqrt(true_d**2+est_d**2-2*true_d*est_d*np.cos(est_AoA-true_AoA))
+def rde(true_delay_us, true_AoA, est_delay_us, est_AoA, log=False):
+    true_d = np.array(true_delay_us) * 1e-6 * c
+    est_d = np.array(est_delay_us) * 1e-6 * c
+    true_AoA = np.array(true_AoA)
+    est_AoA = np.array(est_AoA)
+    
+    diff = true_d**2 + est_d**2 - 2*true_d*est_d*np.cos(est_AoA - true_AoA)
+    diff = np.abs(diff)  
+    abs_error = np.sqrt(diff)
+    
+    rde = abs_error 
+    
+    if log:
+        rde = np.log10(rde + 1e-12)
+    
+    return rde
+
 
 def ecdf(x):
     x = np.sort(x)
     y = np.arange(1, len(x) + 1) / len(x)
     return x, y
 
-SNR_av=15
+SNR_av=5
 print(f'average SNR={SNR_av}')
 
 #%%
@@ -64,15 +76,14 @@ H = normalize(H).to(device)
 Y = normalize(Y).to(device)
 users_position_test=users_position[Umax:,:].to(device)
 
-
-
 #%% LOAD TRAINED MODELS
 ############################ MOMP ############################
-nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(10)], dim=0)
+nominal_MS_ant_position_stacked = torch.stack([nominal_MS_ant_position.clone() for _ in range(Umax)], dim=0)
 
 MOMPnet_trained = MOMP_model(nominal_BS_ant_position, nominal_BS_gains, nominal_BS_coupling_coeff, nominal_MS_ant_position_stacked,
                  subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
-checkpoint = torch.load(f'MOMPnet_{SNR_av}_dB.pth')
+# checkpoint = torch.load(f'.saved_data\.saved_models\MOMPnet_{SNR_av}_dB.pth')
+checkpoint = torch.load(f'.saved_data\.saved_models\MOMPnet_{SNR_av}_dB_new.pth')
 # Load model weights
 MOMPnet_trained.load_state_dict(checkpoint['model_state_dict'])
 learned_BS_pos_y=list(MOMPnet_trained.parameters())[0].detach()  # first parameter tensor
@@ -105,8 +116,7 @@ real_AoA_list, real_delay_list = [],[]
 for u in tqdm(range(total_u-Umax)):
     for upos in range(total_upos):
         
-        # i_b,i_s=loc(Y[u,upos],learned_D_B,D_S)
-        i_b,i_s=loc(Y[u,upos],real_BS_Dictionary,D_S)
+        i_b,i_s=loc(Y[u,upos],learned_D_B,D_S)
         est_AoA_rd,est_delay_us=[BS_angles[i_b],delays[i_s]*1e6]
         est_AoA_list.append(est_AoA_rd)
         est_delay_list.append(est_delay_us)
@@ -135,13 +145,16 @@ x_u = users_position_test[:, :, 0].reshape(-1)
 y_u = users_position_test[:, :, 1].reshape(-1)
 
 #%%
+
 # ---------------------------------------------
 # relative distance Error Heatmap
 # ---------------------------------------------
-x1, x2, y1, y2 = -80, 0, -40, 100  # subregion to plot
+x1, x2, y1, y2 = -80, 0, -40, 80  # subregion to plot
 
 fig, axes = plt.subplots(1, 2, figsize=(12,5))  # 1 row, 2 columns
-vmax=30
+fig.subplots_adjust(wspace=0.1)
+vmax=50
+fontsize=16
 cmap='GnBu'
 # Main scatter for AoA errors
 sc = axes[0].hexbin(x_u, y_u, C=rde_before, cmap=cmap, vmin=0, vmax=vmax,alpha=0.8 )
@@ -152,9 +165,10 @@ sc = axes[0].hexbin(x_u, y_u, C=rde_before, cmap=cmap, vmin=0, vmax=vmax,alpha=0
 circle = patches.Circle((BS_position[0], BS_position[1]), 200,
                         edgecolor='black', facecolor='none', linestyle='--', linewidth=2)
 axes[0].add_patch(circle)
-axes[0].set_title("Localization error before training")
-axes[0].set_xlabel("x (m)")
-axes[0].set_ylabel("y (m)")
+# axes[0].set_title("Localization error before training",fontsize=fontsize)
+axes[0].set_xlabel("x (m)",fontsize=fontsize)
+axes[0].set_ylabel("y (m)",fontsize=fontsize)
+axes[0].tick_params(axis='both', labelsize=fontsize)  # x and y tick labels
 axes[0].legend()
 axes[0].axis('equal')  # ensure circle is not distorted
 axes[0].set_xlim(x1, x2)
@@ -174,22 +188,27 @@ circle = patches.Circle((BS_position[0], BS_position[1]), 200,
                         edgecolor='black', facecolor='none', linestyle='--', linewidth=2)
 axes[1].add_patch(circle)
 
-axes[1].set_title("Localization error after training")
-axes[1].set_xlabel("x (m)")
-axes[1].set_ylabel("y (m)")
+# axes[1].set_title("Localization error after training")
+axes[1].set_xlabel("x (m)",fontsize=fontsize)
+axes[1].tick_params(axis='x', labelsize=fontsize)  # x-tick labels only
+# axes[1].set_ylabel("y (m)")
+axes[1].set_yticklabels([])
 axes[1].legend()
 axes[1].axis('equal')  # ensure circle is not distorted
 axes[1].set_xlim(x1, x2)
 axes[1].set_ylim(y1, y2)
-fig.colorbar(sc, ax=axes, location='right', fraction=0.046, pad=0.04, label='relative distance error (m)')
-
+cbar = fig.colorbar(sc, ax=axes, location='right', fraction=0.046, pad=0.04)
+cbar.set_label('Relative distance error (m)', fontsize=fontsize)
+cbar.ax.tick_params(labelsize=fontsize)
+# plt.savefig('figures\loc.pdf', bbox_inches="tight")
 plt.show()
 #%%
+
 GnRd = LinearSegmentedColormap.from_list(
     "green_red", 
     [
-        (0.0, "#2DF11B"),   
-        (0.5, "#EFE816"),    
+        (0.0, "#89F97E"),   
+        (0.5, "#F5F179"),  
         (1.0, "#F80D0D")        
     ])
 WtRd = LinearSegmentedColormap.from_list(
@@ -221,9 +240,15 @@ axes[0].legend()
 axes[0].axis('equal')  # ensure circle is not distorted
 #Zoom region inset Axes:
 x1, x2, y1, y2 = -100, 50, -50, 100  # subregion of the original image
-axins0 = axes[0].inset_axes(
-    [0.5, 0.5, 0.47, 0.47],
-    xlim=(x1, x2), ylim=(y1, y2), xticklabels=[], yticklabels=[])
+axins0 = inset_axes(
+    axes[0],
+    width="47%", height="47%",
+    loc="lower left"   # now loc works
+)
+axins0.set_xlim(x1, x2)
+axins0.set_ylim(y1, y2)
+axins0.set_xticks([])
+axins0.set_yticks([])
 axins0.hexbin(x_u, y_u, C=rde_before, cmap=zoom_cmap, vmin=0, vmax=vmax,alpha=0.8)
 axes[0].indicate_inset_zoom(axins0, edgecolor="black")
 
@@ -245,9 +270,15 @@ axes[1].legend()
 axes[1].axis('equal')  # ensure circle is not distorted
 #Zoom region inset Axes:
 x1, x2, y1, y2 = -100, 50, -50, 100  # subregion of the original image
-axins1 = axes[1].inset_axes(
-    [0.5, 0.5, 0.47, 0.47],
-    xlim=(x1, x2), ylim=(y1, y2), xticklabels=[], yticklabels=[])
+axins1 = inset_axes(
+    axes[1],
+    width="47%", height="47%",
+    loc="lower left"   # now loc works
+)
+axins1.set_xlim(x1, x2)
+axins1.set_ylim(y1, y2)
+axins1.set_xticks([])
+axins1.set_yticks([])
 axins1.hexbin(x_u, y_u, C=rde_after, cmap=zoom_cmap, vmin=0, vmax=vmax,alpha=0.8)
 axes[1].indicate_inset_zoom(axins1, edgecolor="black")
 fig.colorbar(sc, ax=axes, location='right', fraction=0.046, pad=0.04,label='relative distance error (m)')
@@ -272,10 +303,10 @@ plt.tight_layout()
 plt.show()
 
 
-#%%
+##%%
 # # Compute errors
-# AoA_errors = np.abs(true_AoA - est_AoA)
-# delay_errors = np.abs(true_delay - est_delay)
+# AoA_errors = np.abs(true_AoA - np.array(est_AoA_list))
+# delay_errors = np.abs(true_delay - np.array(est_delay_list))
 # AoA_lim = max(np.abs(AoA_errors.min()), AoA_errors.max())
 # delay_lim = max(np.abs(delay_errors.min()), delay_errors.max())
 # # ---------------------------------------------
@@ -284,7 +315,7 @@ plt.show()
 # fig, ax = plt.subplots(figsize=(6,5))
 
 # # Main scatter for AoA errors
-# sc = ax.scatter(x_u, y_u, c=AoA_errors, cmap=green_red_cmap, vmin=0, vmax=AoA_errors.max())
+# sc = ax.hexbin(x_u, y_u, C=AoA_errors, cmap=GnRd, vmin=0, vmax=AoA_errors.max(),alpha=0.8)
 # plt.colorbar(sc, label="AoA Error (rad)")
 
 # # BS marker
@@ -307,7 +338,7 @@ plt.show()
 # fig, ax = plt.subplots(figsize=(6,5))
 
 # # Main scatter for delay errors
-# sc = ax.scatter(x_u, y_u, c=delay_errors, cmap=green_red_cmap, vmin=0, vmax=delay_errors.max())
+# sc = ax.hexbin(x_u, y_u, C=delay_errors, cmap=GnRd, vmin=0, vmax=delay_errors.max(),alpha=0.8)
 # plt.colorbar(sc, label="Delay Error (µs)")
 
 # # BS marker
@@ -325,5 +356,6 @@ plt.show()
 # ax.axis('equal')
 
 # plt.show()
+
 
 # %%

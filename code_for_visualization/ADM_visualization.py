@@ -216,6 +216,7 @@ def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom
     # Shared colorbar
     cbar = fig.colorbar(im1, ax=axes, fraction=0.046, pad=0.04)
     cbar.set_label("[dB]" if dB else "",fontsize=fontsize)
+    cbar.ax.tick_params(labelsize=fontsize)
 
     # Fix y-ticks: show cos(angle) but label in degrees
     yticks_cos = np.cos(np.deg2rad(yticks_deg))
@@ -228,6 +229,8 @@ def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom
             ax.set_xlabel("Range [m]",fontsize=fontsize)
         else:
             ax.set_xlabel("Delay [µs]",fontsize=fontsize)
+            ax.tick_params(axis='both', labelsize=fontsize)
+
 
 
     if show_max:  
@@ -254,7 +257,8 @@ def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom
         plt.scatter([],[],color=colors[1], marker='s', s=80,label='true user position')
     
     fig.legend(fontsize=fontsize,loc="upper center")
-    if save is not None: fig.savefig(f"{save}.pdf")
+    if save is not None: fig.savefig(f"{save}.pdf", bbox_inches="tight") 
+
     plt.show()
 
 def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=True, user=None,save=None):
@@ -358,8 +362,10 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     fig.legend(fontsize=14)
     if save is not None: fig.savefig(f"{save}.pdf")
     plt.show()
+
 #%% initialize scene
-scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.24,delta_g_BS=[0.9,np.pi],coupling_coeff_BS=2.2*np.exp(1j*(-np.pi/6)))
+# scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.24,delta_g_BS=[0.9,np.pi],coupling_coeff_BS=2.2*np.exp(1j*(-np.pi/6)))
+scene=init_scene_ULA(save_dir,BS_position,f0,nb_BS_antennas,nb_MS_antennas,delta_p_BS=0.24,delta_g_BS=[0.4,np.pi/2],coupling_coeff_BS=0.3*np.exp(1j*(-np.pi/6)))
 
 #load antenna gains at the BS:
 BS_gains=np.load(save_dir/'BS_gains.npz')
@@ -400,7 +406,7 @@ for idx in range(len(position_array)):
     scene.add(tx)
 paths=scene.compute_paths()
 paths.normalize_delays=False
-scene.preview(paths=paths)
+# scene.preview(paths=paths)
 # types=paths.types.numpy() #0=LOS #TODO problem is it gives all paths without knowing the sources
 #%%
 a,tau=paths.cir()
@@ -486,7 +492,8 @@ p=0
 # for p in range(real_angle_delay_map.shape[0]):
 # subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['viridis','red'])
 # subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['jet','mediumpurple'])
-subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['rainbow','black'],save='ADM',titles=['',''])
+subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['rainbow','black'],titles=['',''],fontsize=18)
+# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['plasma','black'],save='ADM',titles=['',''],fontsize=18)
 
 # plt.figure()
 # corr=np.abs(np.conj(FRV_Dictionary).T@FRV_Dictionary)
