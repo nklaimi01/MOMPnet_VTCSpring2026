@@ -166,6 +166,8 @@ labels = [
 ]
 colors = [color_observation, color_nominal, color_MOD, color_MOMP, color_real]
 markers = ['o', 's', 'D', '^', 'x']
+linestyles=['--','--','-','-','--']
+markersizes=[6,6,6,8,6]
 fontsize=16
 plt.figure(figsize=(8, 5))
 
@@ -177,7 +179,7 @@ for i in range(len(labels)):
              means_arr1[i],
              color=colors[i],
              label=labels[i],
-             marker=markers[i])
+             marker=markers[i],linestyle=linestyles[i],markersize=markersizes[i])
     # plt.plot(
     #     [nb_obs_list[j] for j in range(len(nb_obs_list)) if j != 1],  # skip 2nd point
     #     [means_arr1[i][j] for j in range(len(nb_obs_list)) if j != 1],
@@ -198,7 +200,7 @@ plt.yticks(fontsize=fontsize)
 plt.grid(True, which='both', linestyle='--', alpha=0.5)
 plt.legend(fontsize=fontsize)
 plt.tight_layout()
-plt.savefig("MODobs.pdf", bbox_inches="tight")
+# plt.savefig("MODobs.pdf", bbox_inches="tight")
 plt.show()
 
 #%% ######################################### for different SNR ##############################################################
@@ -325,7 +327,8 @@ labels = [
 ]
 colors = [color_observation, color_nominal, color_MOD, color_MOMP, color_real]
 markers = ['o', 's', 'D', '^', 'x']
-
+linestyles=['--','--','-','-','--']
+markersizes=[6,6,6,10,6]
 plt.figure(figsize=(8, 5))
 
 # means_arr must have shape (5, len(nb_obs_list))
@@ -336,7 +339,7 @@ for i in range(len(labels)):
              means_arr[i],
              color=colors[i],
              label=labels[i],
-             marker=markers[i])
+             marker=markers[i],markersize=markersizes[i])#,linestyle=linestyles[i]
 
 plt.yscale('log')
 plt.xlabel('average SNR',fontsize=fontsize)

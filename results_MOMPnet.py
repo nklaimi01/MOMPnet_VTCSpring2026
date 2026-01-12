@@ -56,7 +56,7 @@ for SNR_av in SNR_av_list:
                     subcarriers, BS_DoA, MS_DoA, delays)  # replace with your model class
     # Load everything
     checkpoint = torch.load(f'.saved_data\.saved_models\MOMPnet_{SNR_av}_dB.pth')
-    # checkpoint = torch.load(f'MOMPnet_{SNR_av}_dB_new.pth')
+    # checkpoint = torch.load(f'MOMPnet_{SNR_av}_dB_02.pth')
     models_list.append(checkpoint)
 
     # Load model weights
@@ -130,10 +130,14 @@ axes[1].set_ylabel('NMSE', fontsize=fontsize)
 axes[0].legend(fontsize=fontsize)
 plt.xlabel('epochs', fontsize=fontsize)
 plt.tight_layout()
-# fig.savefig("figures\MOMPnet_subplots.pdf")
+fig.savefig("figures\MOMPnet_subplots.pdf")
 plt.show()
 #%%
 #--------------------------------------------------Plotting learning curve------------------------------------------------------------------
+SNR_av=5
+# checkpoint = torch.load(f'MOMPnet_{SNR_av}_dB_02.pth')
+checkpoint = torch.load(f'.saved_data\.saved_models\MOMPnet_{SNR_av}_dB_new.pth')
+
 train_NMSE_list = checkpoint['train_NMSE']
 MOMPnet_NMSE_list = checkpoint['MOMPnet_NMSE']
 NMSE_nominal = checkpoint['nominal_NMSE']
@@ -165,7 +169,7 @@ labels = [
     'MOMP with real Dicts'
 ]
 colors = [color_nominal, color_MOMP, color_real]
-markers = ['o','^', 'x']
+markers = ['o','s', 'x']
 linestyles=['--','-','--']
 nmse_nominal = NMSE_nominal.mean().item()
 nmse_MOMPnet = MOMPnet_NMSE_avg[-1]
@@ -195,16 +199,15 @@ plt.grid(True, which='both', linestyle=':', alpha=0.5)
 plt.legend()
 plt.tight_layout()
 # plt.ylim([0.14,0.5])
-# fig.savefig("figures\MOMPnet_{SNR_av}.pdf")
+# fig.savefig(f"figures\MOMPnet_{SNR_av}.pdf")
 plt.show()
 
 
 #%%#############################################################################################################################################################################
 ##################################################################  learned parameters #########################################################################################
 ################################################################################################################################################################################
-checkpoint=models_list[1]
+checkpoint = models_list[1]
 MOMPnet.load_state_dict(checkpoint['model_state_dict'])
-
 learned_BS_pos=list(MOMPnet.parameters())[0].detach().numpy()  # first parameter tensor
 learned_gains=list(MOMPnet.parameters())[1].detach().numpy()  # 2nd parameter tensor
 learned_coupling=list(MOMPnet.parameters())[2].detach().numpy()  # 3rd parameter tensor
@@ -251,12 +254,15 @@ for u in range(Umax):
     plot_antenna_positions(x=real_MS_ant_position[0, :, 0],y_list=[y_nominal,y_MOMP,y_real],colors=colors,title=f'Mobile Station #{u} Antenna Positions ')
 #%% -------------------------------------- Quantitatif evaluation: quadratic error --------------------------------
 # BS antenna positions
+real_gains_normalized = real_BS_gains / np.sqrt(np.sum((np.abs(real_BS_gains)**2)))
+nominal_gains_normalized = nominal_BS_gains / np.sqrt(np.sum((np.abs(nominal_BS_gains)**2)))
+learned_gains_normalized= learned_gains / np.sqrt(np.sum((np.abs(learned_gains)**2)))
 print('---------- BS Antenna parameters ---------')
-print(f"‖g_real - g_nominal‖²₂ = {np.linalg.norm(real_BS_gains - nominal_BS_gains)**2:.4e}")
-print(f"‖g_real - g_learned‖²₂ = {np.linalg.norm(real_BS_gains - learned_gains)**2:.4e}")
+print(f"|g_real - g_nominal| = {np.mean(np.abs(real_gains_normalized - nominal_gains_normalized)):.4e}")
+print(f"|g_real - g_learned| = {np.mean(np.abs(real_gains_normalized - learned_gains_normalized)):.4e}")
 
-print(f"‖P_real - P_nominal‖²₂ = {np.linalg.norm(real_BS_ant_position[:,1] - nominal_BS_ant_position[:,1])**2:.4e}")
-print(f"‖P_real - P_learned‖²₂ = {np.linalg.norm(real_BS_ant_position[:,1] - learned_BS_pos)**2:.4e}")
+print(f"‖P_real - P_nominal‖²₂ = {np.mean(np.abs(real_BS_ant_position[:,1] - nominal_BS_ant_position[:,1])):.4e}")
+print(f"‖P_real - P_learned‖²₂ = {np.mean(np.abs(real_BS_ant_position[:,1] - learned_BS_pos)):.4e}")
 
 print(f'real coupling coeff: {real_BS_coupling_coeff:.2e} \nlearned coupling coeff: {learned_coupling:.2e}')
 #MS antenna positions
@@ -276,3 +282,5 @@ print("-"*len(header))
 for u, e_nom, e_learn in rows:
     print(f"{u:4d} | {e_nom:25.4e} | {e_learn:25.4e}")
 
+
+# %%

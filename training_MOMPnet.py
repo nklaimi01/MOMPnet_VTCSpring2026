@@ -6,14 +6,16 @@ from models.MOMP_model import MOMP_model
 from utils.dictionary_gen_utils import *
 from saved_data_loader import *
 from utils.training_utils import *
-#
-def ticklabels_array(highest_int, spacing):
-    result = []
-    for i in range(highest_int + 1):
-        result.append(str(i))
-        if i < highest_int:
-            result.extend([""] * (spacing-1))
-    return result
+
+def Cost_fct(channel,channel_estimation):
+    if channel.dim() == 4 or channel.dim()==5:
+        dims = (-3,-2, -1)
+    elif channel.dim() == 2:
+        dims = (1,)
+    else:
+        raise ValueError(f"channel must be 2-D , 4-D or 5-D, got {channel.dim()}-D")#/torch.sum(torch.abs(channel)**2, dim=dims)
+
+    return torch.sum(torch.abs(channel - channel_estimation)**2, dim=dims) 
 
 #--------------------------------------- preprocessing ------------------------------------------------------------
 Umax=10
@@ -69,7 +71,7 @@ with torch.no_grad():
     NMSE_nominal=NMSE(H_val, H_val_nominaldict)
 #---------------------------------------training-----------------------------------------------
 MOMPnet.train()
-nb_epochs = 8
+nb_epochs = 6
 # batch_size = 1 # batch size
 train_NMSE_list, MOMPnet_NMSE_list = [], []
 with torch.no_grad():
@@ -98,7 +100,7 @@ for epoch in epoch_bar:
 
         res_batched=torch.stack([MOMPnet.forward(Y_batched[p],user_idx,sigma2)[0] for p in range(len(Y_batched))], dim=0)
         H_est_batched=Y_batched-res_batched
-        loss = torch.mean(NMSE(Y_batched,H_est_batched))
+        loss = torch.mean(Cost_fct(Y_batched,H_est_batched))
         loss.backward()
         optimizer.step()
         #scheduler.step() # Update the learning rate using the scheduler
@@ -118,7 +120,7 @@ for epoch in epoch_bar:
         'MOMPnet_NMSE': MOMPnet_NMSE_list
     }
     # Save to a file
-    torch.save(save_dict, f'MOMPnet_{SNR_av}_dB_new.pth')
+    torch.save(save_dict, f'MOMPnet_{SNR_av}_dB_2.pth')
 
 #Save data
 save_dict = {

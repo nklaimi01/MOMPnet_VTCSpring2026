@@ -36,7 +36,7 @@ color_MOD='purple'#'blue'
 color_MOMP = 'orange'
 ###########################
 
-save_dir = Path.cwd()/'.saved_data/Data'
+save_dir = Path.cwd()/'.saved_data/Data'#_new'
 # load Channels
 channels_dict = np.load(save_dir/'Channels.npz')
 channels = torch.from_numpy(channels_dict['channels']).to(device)
