@@ -27,7 +27,7 @@ torch.manual_seed(42)   # any integer you like
 nb_atoms=len(BS_DoA)
 total_nb_obs=21_000
 a_idx=torch.randint(nb_atoms,(total_nb_obs,4))
-a_val=torch.randn(a_idx.shape,dtype=torch.complex128)+1j*torch.randn(a_idx.shape,dtype=torch.complex128)
+a_val = torch.randn(a_idx.shape,dtype=torch.complex128,device=a_idx.device)
 alpha=torch.zeros((total_nb_obs,nb_atoms),dtype=a_val.dtype)
 alpha.scatter_(1,a_idx,a_val)
 real_D=real_BS_Dictionary
