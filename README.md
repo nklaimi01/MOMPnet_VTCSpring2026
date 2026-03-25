@@ -40,14 +40,14 @@ Run the script [`HD_data_gen.py`](./HD_data_gen.py):
 python HD_data_gen.py
 ```
 
-The script [`saved_data_loader.py`](./saved_data_loader.py) imports the previously generated data to all scripts containing 
+The script [`saved_data_loader.py`](./saved_data_loader.py) imports the generated data to all scripts containing 
 ```bash 
 from saved_data_loader import *
 ```
 ## 📚 Citation
 Please consider citing the original paper if this code contributes to your work.
 ```bibtex
-@misc{klaimi2026physicallyconstrainedunfoldedmultidimensional,
+@misc{klaimi2026,
       title={Physically constrained unfolded multi-dimensional OMP for large MIMO systems}, 
       author={Nay Klaimi and Clément Elvira and Philippe Mary and Luc Le Magoarou},
       year={2026},
