@@ -212,7 +212,6 @@ def MOMP_estimation(Y, D1, D2, D3, sigma2_est):
                     H_est[u, p] = y - res
             return H_est
 
-#%% functions
 def OMP(Y, D,sigma2_est=None, iter_max=10):
     '''handles batched operations'''
     N=Y.shape[1:].numel()
