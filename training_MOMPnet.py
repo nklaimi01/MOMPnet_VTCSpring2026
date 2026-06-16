@@ -22,6 +22,7 @@ Umax=10
 Pmax=150
 SNR_av=5
 print(f"average SNR={SNR_av}")
+name=f'MOMPnet_{SNR_av}_dB.pth'
 sigma2=sigma2_dict[SNR_av]
 H=channels[:Umax,:Pmax] #dataset size
 Y=observations_dict[SNR_av][:Umax,:Pmax] #dataset size
@@ -74,6 +75,8 @@ MOMPnet.train()
 nb_epochs = 6
 # batch_size = 1 # batch size
 train_NMSE_list, MOMPnet_NMSE_list = [], []
+learned_params_list=[]
+
 with torch.no_grad():
     # --- TRAIN ---
     H_est_train = model_estimation(Y_train, MOMPnet, sigma2)
@@ -81,6 +84,14 @@ with torch.no_grad():
     # --- VALIDATION ---
     H_est_val = model_estimation(Y_val, MOMPnet, sigma2)
     MOMPnet_NMSE_list.append(NMSE(H_val,H_est_val))
+
+    learned_BS_pos=MOMPnet.BS_learnable_pos_y.detach().numpy().copy()  # first parameter tensor
+    learned_gains=MOMPnet.BS_ant_gains.detach().numpy().copy()  # 2nd parameter tensor
+    learned_coupling=MOMPnet.BS_coupling_coeff.detach().numpy().copy()  # 3rd parameter tensor
+    learned_MS_pos=torch.stack([p.detach() for p in MOMPnet.MS_learnable_pos_list], 0).cpu().numpy().copy()  # 4th parameter tensor
+    learned_params_list.append({'learned_BS_pos':learned_BS_pos,'learned_gains':learned_gains,'learned_coupling':learned_coupling,'learned_MS_pos':learned_MS_pos})
+
+
 
 
 epoch_bar = tqdm(range(nb_epochs), desc="Epochs", position=0, smoothing=0.1)
@@ -113,14 +124,24 @@ for epoch in epoch_bar:
             H_est_val = model_estimation(Y_val, MOMPnet, sigma2)
             MOMPnet_NMSE_list.append(NMSE(H_val,H_est_val))
 
+            learned_BS_pos=MOMPnet.BS_learnable_pos_y.detach().numpy().copy()  # first parameter tensor
+            learned_gains=MOMPnet.BS_ant_gains.detach().numpy().copy()  # 2nd parameter tensor
+            learned_coupling=MOMPnet.BS_coupling_coeff.detach().numpy().copy()  # 3rd parameter tensor
+            learned_MS_pos=torch.stack([p.detach() for p in MOMPnet.MS_learnable_pos_list], 0).cpu().numpy().copy()  # 4th parameter tensor
+            learned_params_list.append({'learned_BS_pos':learned_BS_pos,'learned_gains':learned_gains,'learned_coupling':learned_coupling,'learned_MS_pos':learned_MS_pos})
+
     # Save so far trained model
     save_dict = {
-        'model_state_dict': MOMPnet.state_dict(),
-        'train_NMSE': train_NMSE_list,
-        'MOMPnet_NMSE': MOMPnet_NMSE_list
+    'model_state_dict': MOMPnet.state_dict(),
+    'train_NMSE': train_NMSE_list,
+    'MOMPnet_NMSE': MOMPnet_NMSE_list,
+    'nominal_NMSE': NMSE_nominal,
+    'real_NMSE': NMSE_real,
+    'learned_params_list':learned_params_list
+
     }
     # Save to a file
-    torch.save(save_dict, f'MOMPnet_{SNR_av}_dB_2.pth')
+    torch.save(save_dict, name)
 
 #Save data
 save_dict = {
@@ -128,8 +149,10 @@ save_dict = {
     'train_NMSE': train_NMSE_list,
     'MOMPnet_NMSE': MOMPnet_NMSE_list,
     'nominal_NMSE': NMSE_nominal,
-    'real_NMSE': NMSE_real
+    'real_NMSE': NMSE_real,
+    'learned_params_list':learned_params_list
+
 }
 # Save to a file
-torch.save(save_dict, f'MOMPnet_{SNR_av}_dB_new.pth')
+torch.save(save_dict, name)
 print("Model saved!")

@@ -252,16 +252,16 @@ def subplot_ADM(position, real_ADM, nominal_ADM, angles, delays, user=None, zoom
         user_delay_us = np.sqrt(dx**2 + dy**2 + dz**2) / 3e8 * 1e6
         user_cos = np.cos(user_angle_rd)
 
-        axes[0].scatter(user_delay_us, user_cos, color=colors[1], marker='s', s=80)
-        axes[1].scatter(user_delay_us, user_cos, color=colors[1], marker='s', s=80)
-        plt.scatter([],[],color=colors[1], marker='s', s=80,label='true user position')
+        axes[0].scatter(user_delay_us, user_cos, color=colors[1], marker='x', s=80)
+        axes[1].scatter(user_delay_us, user_cos, color=colors[1], marker='x', s=80)
+        plt.scatter([],[],color=colors[1], marker='x', s=80,label='true user position')
     
     fig.legend(fontsize=fontsize,loc="upper center")
     if save is not None: fig.savefig(f"{save}.pdf", bbox_inches="tight") 
 
     plt.show()
 
-def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=True, user=None,save=None):
+def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=True, user=None,save=None,cmap='GnBu'):
     '''
     user=[dx,dy,dz] user's relative position w/ respect to the BS
     '''
@@ -284,28 +284,32 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     # main Heatmap
     ax_main = fig.add_subplot(gs[1, 2])
 
-    # Top marginal (column) as line
-    ax_top = fig.add_subplot(gs[0, 2],sharex=ax_main)
-    ax_top.semilogy(delays_us,top_marginal)
-    ax_top.tick_params(axis='both',which='both',bottom=False, top=False,left=False, right=False,labelbottom=False, labelleft=False)
-    # ax_top.set_title("Delay map")
-    ax_top.axvline(delays_us[top_marginal.argmax()],color='orange')
+    if delay_map is not None:
+        # Top marginal (column) as line
+        ax_top = fig.add_subplot(gs[0, 2],sharex=ax_main)
+        ax_top.semilogy(delays_us,top_marginal)
+        ax_top.tick_params(axis='both',which='both',bottom=False, top=False,left=False, right=False,labelbottom=False, labelleft=False)
+        # ax_top.set_title("Delay map")
+        ax_top.axvline(delays_us[top_marginal.argmax()],color='orange')
 
-    # Right marginal (row) as line
-    ax_right = fig.add_subplot(gs[1, 3],sharey=ax_main)
-    ax_right.semilogx(right_marginal, cos_angles)
-    ax_right.invert_yaxis()
-    ax_right.tick_params(axis='both',which='both',bottom=False, top=False,left=False, right=False,labelbottom=False, labelleft=False)
-    # ax_right.set_title("Angle map")
-    ax_right.axhline(cos_angles[right_marginal.argmax()],color='orange')
+        # Remove spines from top marginal
+        for spine in ["top", "right", "left"]:
+            ax_top.spines[spine].set_visible(False)
 
-    # Remove spines from top marginal
-    for spine in ["top", "right", "left"]:
-        ax_top.spines[spine].set_visible(False)
+    if angle_map is not None:
 
-    # Remove spines from right marginal
-    for spine in ["top", "right","bottom"]:
-        ax_right.spines[spine].set_visible(False)
+        # Right marginal (row) as line
+        ax_right = fig.add_subplot(gs[1, 3],sharey=ax_main)
+        ax_right.semilogx(right_marginal, cos_angles)
+        ax_right.invert_yaxis()
+        ax_right.tick_params(axis='both',which='both',bottom=False, top=False,left=False, right=False,labelbottom=False, labelleft=False)
+        # ax_right.set_title("Angle map")
+        ax_right.axhline(cos_angles[right_marginal.argmax()],color='orange')
+
+        # Remove spines from right marginal
+        for spine in ["top", "right","bottom"]:
+            ax_right.spines[spine].set_visible(False)
+
 
     # Main heatmap
     extent = [delays_us.min(), delays_us.max(), cos_angles.max(), cos_angles.min()]  
@@ -321,7 +325,7 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
     im = ax_main.imshow(ADM,
                          aspect='auto',
                          extent=extent,
-                         origin='lower',cmap='GnBu',
+                         origin='lower',cmap=cmap,
                          vmin=vmin, vmax=vmax)
     # ax_main.set_title("Full BS Imperfection Knowledge")
     ax_main.set_xlabel("Delay [µs]")
@@ -347,9 +351,8 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
 
     if show_max:  
         r_angle_idx,r_delay_idx = np.unravel_index(np.argmax(ADM) , ADM.shape)  # (BS_angle_idx, delay_idx)
-        ax_main.scatter(delays_us[r_delay_idx], cos_angles[r_angle_idx], color='magenta', marker='v', s=80, label='OMP Maximum correlation')
-        # find maximum of the correlation matrix
-        ax_main.scatter(delays_us[top_marginal.argmax()], cos_angles[right_marginal.argmax()], color='orange', marker='^', s=80, label='MOMP Maximum correlation')
+        ax_main.scatter(delays_us[r_delay_idx], cos_angles[r_angle_idx], color='magenta', marker='v', s=80, label='OMP selection')
+        ax_main.scatter(delays_us[top_marginal.argmax()], cos_angles[right_marginal.argmax()], color='orange', marker='^', s=80, label='MOMP selection')
 
     # Optional: mark user
     if user is not None:
@@ -358,7 +361,7 @@ def plot_w_marginals(ADM,angle_map,delay_map, angles, delays, dB=True, show_max=
         user_delay_us = np.sqrt(dx**2 + dy**2 + dz**2) / 3e8 * 1e6
         user_cos = np.cos(user_angle_rd)
 
-        ax_main.scatter(user_delay_us, user_cos, color='black', marker='x', s=100, label='User position (geometry)')
+        ax_main.scatter(user_delay_us, user_cos, color='black', marker='x', s=100, label='true user position')
     fig.legend(fontsize=14)
     if save is not None: fig.savefig(f"{save}.pdf")
     plt.show()
@@ -489,11 +492,11 @@ noimp_angle_delay_map=angle_delay_map(Y_noimp,nominal_BS_Dictionary,nominal_FRV_
 
 #%%
 p=0
+cmap = plt.get_cmap("GnBu").reversed()
 # for p in range(real_angle_delay_map.shape[0]):
-# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['viridis','red'])
-# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['jet','mediumpurple'])
-subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['rainbow','black'],titles=['',''],fontsize=18)
-# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['plasma','black'],save='ADM',titles=['',''],fontsize=18)
+# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['rainbow','black'],titles=['',''],fontsize=18)
+# subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=['GnBu','firebrick'],titles=['',''],fontsize=18)
+subplot_ADM(p,noimp_angle_delay_map,nominal_angle_delay_map,BS_angles,delays,user=position_array[p]-BS_position,show_max=False,zoom=[0.2, 0.5, 75, 100],colors=[cmap,'black'],titles=['',''],fontsize=18)
 
 # plt.figure()
 # corr=np.abs(np.conj(FRV_Dictionary).T@FRV_Dictionary)
@@ -521,17 +524,11 @@ noimp_delay_map=np.einsum('ak,ubmk->ubma',np.conj(nominal_FRV_Dictionary).T,Y_no
 noimp_delay_map=((np.abs(noimp_delay_map)**2).sum(axis=(1,2)))
 
 # %%
-
-# plot_w_marginals(real_angle_delay_map[position],real_angle_map[position],delay_map[position],BS_angles,delays)
+p=0
+plot_w_marginals(nominal_angle_delay_map[p],nominal_angle_map[p],nominal_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position,cmap=cmap)#,save=f'{p}_nominal')
 #%%
-for p in range(len(position_array)):
-    plot_w_marginals(real_angle_delay_map[p],real_angle_map[p],real_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)#,save=f'{p}_real')
-    plot_w_marginals(nominal_angle_delay_map[p],nominal_angle_map[p],nominal_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)#,save=f'{p}_nominal')
+# for p in range(len(position_array)):
+#     plot_w_marginals(real_angle_delay_map[p],real_angle_map[p],real_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position,cmap=cmap)#,save=f'{p}_real')
+#     plot_w_marginals(nominal_angle_delay_map[p],nominal_angle_map[p],nominal_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position,cmap=cmap)#,save=f'{p}_nominal')
+#     plot_w_marginals(noimp_angle_delay_map[p],noimp_angle_map[p],noimp_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position,cmap=cmap)#,save=f'{p}_no_impairments') #! if no_impairments
 
-    plot_w_marginals(noimp_angle_delay_map[p],noimp_angle_map[p],noimp_delay_map[p],BS_angles,delays,user=position_array[p]-BS_position)#,save=f'{p}_no_impairments') #! if no_impairments
-
-
-
-
-
-# %%

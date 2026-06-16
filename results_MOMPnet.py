@@ -86,13 +86,13 @@ for idx, checkpoint in enumerate(models_list):
 
     # Labels and colors
     labels = [
-        'MOMP with nominal Dicts',
+        'MOMP with nominal parameters',
         'MOMPnet',
-        'MOMP with real Dicts'
+        'MOMP with real parameters'
     ]
     colors = [color_nominal, color_MOMP, color_real]
-    markers = ['o','^', 'x']
-    linestyles=['--','-','--']
+    markers = ['','^', '']
+    linestyles=['--','-','-.']
     titles = [r'$0~\mathrm{dB}$', r'$5~\mathrm{dB}$', r'$15~\mathrm{dB}$']    
     nmse_nominal = NMSE_nominal.mean().item()
     nmse_MOMPnet = MOMPnet_NMSE_avg[-1]
@@ -169,7 +169,7 @@ labels = [
     'MOMP with real Dicts'
 ]
 colors = [color_nominal, color_MOMP, color_real]
-markers = ['o','s', 'x']
+markers = ['','s', '']
 linestyles=['--','-','--']
 nmse_nominal = NMSE_nominal.mean().item()
 nmse_MOMPnet = MOMPnet_NMSE_avg[-1]
